@@ -1,0 +1,17 @@
+# Agents
+.agent/
+.codex/
+.claude/
+
+# IDE
+.idea/
+
+# Playgrounds
+playground.py
+
+# Env
+*.env
+
+# Python
+**/__pycache__/
+*$py.class
