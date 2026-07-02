@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package test.enums;
+
+enum Mood {
+  option allow_alias = true;
+  MOOD_UNSPECIFIED = 0;
+  HAPPY = 1;
+  JOYFUL = 1;  // alias of HAPPY
+  GRUMPY = 2;
+}
+
+message Palette {
+  Mood mood = 1;
+  repeated Mood history = 2;
+  map<string, Mood> by_name = 3;
+}

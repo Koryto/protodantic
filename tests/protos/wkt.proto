@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package test.wkt;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+message Temporal {
+  google.protobuf.Timestamp at = 1;
+  google.protobuf.Duration span = 2;
+  repeated google.protobuf.Timestamp history = 3;
+  map<string, google.protobuf.Duration> budgets = 4;
+}

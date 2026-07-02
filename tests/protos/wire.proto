@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package test.wire;
+
+// Schema evolution: EventV2 is a newer revision of EventV1.
+message EventV1 {
+  string id = 1;
+}
+
+message EventV2 {
+  string id = 1;
+  string source = 2;
+  int32 priority = 3;
+}

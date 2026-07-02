@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package beta;
+
+message Thing {
+  string value = 1;
+}
+
+message Holder {
+  Thing thing = 1;
+}

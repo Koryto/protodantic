@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package test.wrappers;
+
+import "google/protobuf/wrappers.proto";
+
+message Settings {
+  google.protobuf.StringValue display_name = 1;
+  google.protobuf.Int32Value volume = 2;
+  google.protobuf.BoolValue enabled = 3;
+  google.protobuf.DoubleValue gain = 4;
+  google.protobuf.BytesValue blob = 5;
+}

@@ -15,3 +15,7 @@ playground.py
 # Python
 **/__pycache__/
 *$py.class
+.venv/
+.pytest_cache/
+dist/
+*.egg-info/

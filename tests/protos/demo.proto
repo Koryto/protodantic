@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package demo;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+enum Color {
+  COLOR_UNSPECIFIED = 0;
+  RED = 1;
+  GREEN = 2;
+}
+
+message Address {
+  string street = 1;
+  string city = 2;
+}
+
+message User {
+  int64 id = 1;
+  string name = 2;
+  bool active = 3;
+  double score = 4;
+  bytes avatar = 5;
+  Color color = 6;
+  Address address = 7;
+  repeated string tags = 8;
+  repeated Address addresses = 9;
+  map<string, int32> counts = 10;
+  map<string, Address> places = 11;
+  optional string nickname = 12;
+  google.protobuf.Timestamp created_at = 13;
+  oneof contact {
+    string email = 14;
+    string phone = 15;
+  }
+  google.protobuf.Duration ttl = 16;
+
+  message Settings {
+    bool dark_mode = 1;
+  }
+  Settings settings = 17;
+}
