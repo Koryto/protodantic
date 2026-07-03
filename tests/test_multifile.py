@@ -2,9 +2,6 @@
 dependencies, and same-named messages in different packages coexisting.
 """
 
-import pytest
-
-
 def test_cross_file_imports(generate):
     """A message using a type imported from another file round-trips."""
     mod = generate("orders.proto", "common.proto")

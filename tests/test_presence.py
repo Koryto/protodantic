@@ -74,3 +74,24 @@ def test_oneof_mutual_exclusion_validated(mod):
     enforces proto semantics instead of silently letting one value win."""
     with pytest.raises(ValidationError):
         mod.Carrier(text="hi", number=42)
+
+
+def test_oneof_exclusion_enforced_on_assignment(mod):
+    """Mutation is validated too: assigning a second oneof member raises
+    instead of silently winning at serialization time."""
+    carrier = mod.Carrier(text="hi")
+    with pytest.raises(ValidationError):
+        carrier.number = 42
+
+
+def test_assignment_validation_is_configurable(mod):
+    """Default is validate-on-assignment, but users opt out with standard
+    pydantic config on a subclass."""
+    from pydantic import ConfigDict
+
+    class Relaxed(mod.Carrier):
+        model_config = ConfigDict(validate_assignment=False)
+
+    carrier = Relaxed(text="hi")
+    carrier.number = 42  # no validation on assignment for this subclass
+    assert carrier.number == 42

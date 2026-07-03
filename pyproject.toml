@@ -1,8 +1,8 @@
 [project]
 name = "protodantic"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Bidirectional bridge between Protocol Buffers and Pydantic: generate pydantic models from .proto files with lossless round-trips to proto messages and wire bytes"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.7",
     "protobuf>=6.30",
@@ -20,6 +20,9 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/protodantic/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/protodantic"]

@@ -18,6 +18,8 @@ from google.protobuf.descriptor import FieldDescriptor
 from google.protobuf.message import Message
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from protodantic.types import NULL, _strip_null_sentinel
+
 _TIMESTAMP = "google.protobuf.Timestamp"
 _DURATION = "google.protobuf.Duration"
 _ANY = "google.protobuf.Any"
@@ -68,7 +70,9 @@ def python_field_name(proto_name: str) -> str:
 def model_for(full_name: str) -> type[ProtoModel]:
     """Look up the generated model class for a proto full name (e.g. "pkg.Msg").
 
-    The module defining the model must have been imported first.
+    The module defining the model must have been imported first. If several
+    imported modules define the same proto type, the most recently imported
+    one wins (last-import-wins).
     """
     try:
         return _MODEL_REGISTRY[full_name]
@@ -127,7 +131,7 @@ def _fill_message(target: Message, value: Any) -> None:
             )
         target.Pack(value.to_proto())
     elif full_name in _STRUCT_TYPES:
-        json_format.ParseDict(value, target)
+        json_format.ParseDict(_strip_null_sentinel(value), target)
     elif full_name in _WRAPPER_TYPES:
         target.value = value
     else:
@@ -152,7 +156,10 @@ def _message_to_python(msg: Message) -> Any:
             raise ValueError(f"failed to unpack Any containing {type_name!r}")
         return model_cls.from_proto(inner)
     if full_name in _STRUCT_TYPES:
-        return json_format.MessageToDict(msg)
+        result = json_format.MessageToDict(msg)
+        if full_name == "google.protobuf.Value" and result is None:
+            return NULL  # a set-but-null Value; None is reserved for "unset"
+        return result
     if full_name in _WRAPPER_TYPES:
         return msg.value
     model_cls = _MODEL_REGISTRY.get(full_name)
@@ -167,7 +174,13 @@ def _message_to_python(msg: Message) -> Any:
 class ProtoModel(BaseModel):
     """Pydantic base model bound to a protobuf message type."""
 
-    model_config = ConfigDict(populate_by_name=True, protected_namespaces=())
+    model_config = ConfigDict(
+        populate_by_name=True,
+        protected_namespaces=(),
+        # proto semantics hold under mutation too (oneofs, ranges); users can
+        # opt out with model_config = ConfigDict(validate_assignment=False)
+        validate_assignment=True,
+    )
 
     __proto_full_name__: ClassVar[str] = ""
     __proto_pool__: ClassVar[Any] = None
@@ -177,7 +190,10 @@ class ProtoModel(BaseModel):
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
         super().__pydantic_init_subclass__(**kwargs)
-        if cls.__proto_full_name__:
+        # Only classes that declare __proto_full_name__ in their own body are
+        # registered: plain user subclasses don't hijack resolution, while
+        # re-declaring the name is the explicit opt-in to take over.
+        if cls.__dict__.get("__proto_full_name__"):
             _MODEL_REGISTRY[cls.__proto_full_name__] = cls
 
     @model_validator(mode="after")
@@ -238,7 +254,12 @@ class ProtoModel(BaseModel):
 
     @classmethod
     def from_proto(cls, msg: Message) -> Self:
-        """Build a model instance from a protobuf message."""
+        """Build a model instance from a protobuf message.
+
+        Works with any message whose descriptor matches this model's schema —
+        including instances of classic protoc-generated ``_pb2`` classes, so
+        generated models interoperate with existing gRPC/protobuf codebases.
+        """
         data: dict[str, Any] = {}
         for fd in msg.DESCRIPTOR.fields:
             name = python_field_name(fd.name)

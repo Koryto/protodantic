@@ -37,8 +37,14 @@ def test_generated_code_has_no_codegen_dependencies(fdset):
     assert "protodantic.codegen" not in source
 
 
-def test_generated_code_is_marked(fdset):
-    assert "DO NOT EDIT" in generate_source(fdset)
+def test_generated_code_is_marked_with_version(fdset):
+    """Output carries the DO NOT EDIT marker and the protodantic version that
+    produced it (future compat checks against committed generated code)."""
+    from protodantic import __version__
+
+    source = generate_source(fdset)
+    assert "DO NOT EDIT" in source
+    assert f"protodantic {__version__}" in source
 
 
 def test_proto_without_package_generates(generate, tmp_path):

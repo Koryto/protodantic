@@ -82,6 +82,47 @@ def test_struct_maps_to_python_data(generate):
     assert restored == blob
 
 
+def test_value_field_explicit_json_null(generate):
+    """protodantic.NULL distinguishes an explicit JSON null in a Value field
+    from an unset field: None = unset, NULL = null on the wire."""
+    from protodantic import NULL
+
+    mod = generate("structs.proto")
+    blob = mod.Blob(single=NULL)
+    assert blob.to_proto().HasField("single")
+
+    restored = mod.Blob.from_proto_bytes(blob.to_proto_bytes())
+    assert restored.single is NULL
+
+    unset = mod.Blob.from_proto_bytes(mod.Blob().to_proto_bytes())
+    assert unset.single is None
+
+
+def test_null_sentinel_inside_containers_normalizes_to_none(generate):
+    """Inside Struct/ListValue containers plain None already means JSON null,
+    so a nested NULL sentinel is accepted and comes back as None."""
+    from protodantic import NULL
+
+    mod = generate("structs.proto")
+    blob = mod.Blob(meta={"k": NULL}, items=[NULL, "x"])
+    restored = mod.Blob.from_proto_bytes(blob.to_proto_bytes())
+    assert restored.meta == {"k": None}
+    assert restored.items == [None, "x"]
+
+
+def test_null_sentinel_serializes_as_json_null(generate):
+    """model_dump_json emits real null for NULL; python-mode dumps keep the
+    sentinel so NULL-vs-unset survives dump/validate round-trips."""
+    from protodantic import NULL
+
+    mod = generate("structs.proto")
+    blob = mod.Blob(single=NULL, meta={"k": NULL})
+    text = blob.model_dump_json()
+    assert '"single":null' in text
+    assert '"k":null' in text
+    assert blob.model_dump()["single"] is NULL
+
+
 def test_any_field_packs_and_unpacks_models(generate):
     """google.protobuf.Any maps to `typing.Any`: the field accepts any generated
     ProtoModel; to_proto packs it (type_url + bytes), from_proto resolves the

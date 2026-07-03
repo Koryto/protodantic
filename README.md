@@ -83,10 +83,33 @@ source = generate_source(compile_fdset(["demo.proto"]))
 
 Field names that collide with python keywords or pydantic internals (`class`, `from`, `model_config`, ...) get a trailing underscore (`class_`) with the proto name kept as a populate alias. Same-named messages in different packages get package-qualified class names; every model is also reachable via `protodantic.model_for("pkg.Message")`.
 
+Semantics worth knowing:
+
+- **Validation on mutation is on by default** (`validate_assignment=True`): assigning a second oneof member or an out-of-range int raises immediately. Opt out per-model with standard pydantic config on a subclass.
+- **`protodantic.NULL`** expresses an explicit JSON null in a `google.protobuf.Value` field (`None` means *unset*). In `model_dump_json()` it serializes as real `null`; python-mode dumps keep the sentinel.
+- **Subclassing a generated model does not affect parsing**: `from_proto`/`model_for` keep resolving to the generated class. To make your subclass the resolution target (e.g. to add custom validators applied on parse), re-declare `__proto_full_name__` in its body — explicit opt-in.
+
+## Interop with existing `_pb2` code
+
+Already consuming a centralized proto package as protoc-generated `_pb2` modules? Generated models interoperate directly:
+
+```python
+user = User.from_proto(their_pb2_user_instance)   # accepts _pb2 messages
+their_msg = their_pb2.User.FromString(user.to_proto_bytes())  # canonical bytes
+```
+
 ## How it works
 
 `protoc` (bundled via `grpcio-tools`) compiles your protos to a `FileDescriptorSet`, which codegen embeds in the generated module. At runtime, `ProtoModel` builds dynamic protobuf message classes from those descriptors — no `_pb2.py` files needed, and no protobuf internals leak into your models.
 
-## Status
+If several imported generated modules define the same proto type, the registry behind `model_for()` / nested-message resolution is last-import-wins.
 
-v0.1 — proto3 only by design (proto2 input is rejected with a clear error). The full supported-behavior spec lives in [tests/](tests/) — 63 use-case tests, all green. Documented policies: unknown fields are dropped when a model re-serializes (the model is the source of truth), and naive datetimes are interpreted as UTC. gRPC service stubs are out of scope for now.
+## Status & roadmap
+
+Requires Python ≥ 3.11. proto3 only by design (proto2 input is rejected with a clear error). The full supported-behavior spec lives in [tests/](tests/) — every test documents one use case. Documented policies: unknown fields are dropped when a model re-serializes (the model is the source of truth), and naive datetimes are interpreted as UTC.
+
+- **0.1.0 (current)** — greenfield: `.proto` → pydantic codegen with lossless bidirectional round-trips, plus the semantics future drops build on.
+- **0.2.0 — brownfield** — reverse schema codegen (pydantic models → `.proto`), generating from installed `_pb2` packages by descriptor reflection, `to_proto(into=TheirPb2Class)`.
+- **0.3.0 — performance** — benchmark suite (vs `json.loads`+pydantic, raw `_pb2`, betterproto), then cached field plans and trusted-construction fast paths.
+
+gRPC service stubs are out of scope: protodantic is a message layer.

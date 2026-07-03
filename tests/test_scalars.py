@@ -85,6 +85,13 @@ def test_string_field_rejects_wrong_type(mod):
         mod.ScalarSink(f_string=12345)
 
 
+def test_range_enforced_on_assignment(mod):
+    """Proto range constraints also apply when mutating an existing model."""
+    sink = mod.ScalarSink()
+    with pytest.raises(ValidationError):
+        sink.f_uint32 = -1
+
+
 def test_nan_and_infinity_roundtrip(mod):
     """NaN and ±Infinity are valid proto float/double values on the wire."""
     sink = mod.ScalarSink(
