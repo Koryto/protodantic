@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package test.nesting;
+
+message Outer {
+  message Middle {
+    message Inner {
+      string leaf = 1;
+    }
+    Inner inner = 1;
+    string tag = 2;
+  }
+  Middle middle = 1;
+}

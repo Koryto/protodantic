@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package test.hostile;
+
+// python keyword as a type name
+message class {
+  string x = 1;
+}
+
+// builtins referenced by generated annotations / default factories
+message list {
+  string item = 1;
+}
+
+message dict {
+  string k = 1;
+}
+
+// keyword enum name + keyword members (proto allows all of these)
+enum global {
+  GLOBAL_UNSPECIFIED = 0;
+  def = 1;
+  return = 2;
+}
+
+message Holder {
+  class c = 1;
+  list l = 2;
+  dict d = 3;
+  global mode = 4;
+  repeated string tags = 5;      // builtin list[...] annotation must survive
+  map<string, int32> counts = 6; // builtin dict factory must survive
+}

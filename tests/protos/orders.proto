@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package test.orders;
+
+import "common.proto";
+
+message Order {
+  string id = 1;
+  test.common.Money total = 2;
+  repeated test.common.Money refunds = 3;
+}

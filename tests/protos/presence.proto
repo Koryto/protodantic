@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package test.presence;
+
+message Inner {
+  int32 n = 1;
+}
+
+message Carrier {
+  optional int32 opt_int = 1;
+  optional string opt_str = 2;
+  optional bool opt_bool = 3;
+  optional bytes opt_bytes = 4;
+  Inner inner = 5;
+  oneof payload {
+    string text = 6;
+    Inner boxed = 7;
+    int64 number = 8;
+  }
+  int32 plain = 9;
+}

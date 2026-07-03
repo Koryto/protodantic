@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      unpublished: ${{ steps.version.outputs.unpublished }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+
+      - name: Run tests
+        run: |
+          uv sync
+          uv run pytest tests/
+
+      - name: Check version against PyPI
+        id: version
+        run: |
+          VERSION=$(uv run python -c "from protodantic._version import __version__; print(__version__)")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/protodantic-py/$VERSION/json")
+          if [ "$STATUS" = "404" ]; then
+            echo "unpublished=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "unpublished=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$VERSION pypi_status=$STATUS"
+
+      - name: Build distributions
+        run: uv build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    # publish only when the version in _version.py is not on PyPI yet:
+    # merging to master releases iff the PR bumped the version
+    if: needs.build.outputs.unpublished == 'true'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # PyPI Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

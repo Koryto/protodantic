@@ -1,6 +1,54 @@
 [project]
-name = "protodantic"
-version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.13"
-dependencies = []
+name = "protodantic-py"
+dynamic = ["version"]
+description = "Bidirectional bridge between Protocol Buffers and Pydantic: generate pydantic models from .proto files with lossless round-trips to proto messages and wire bytes"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "My Koryto", email = "mykoryto93@gmail.com" },
+]
+requires-python = ">=3.11"
+keywords = ["protobuf", "pydantic", "codegen", "serialization", "grpc", "proto3"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Pydantic",
+    "Framework :: Pydantic :: 2",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pydantic>=2.7",
+    "protobuf>=6.30",
+    "grpcio-tools>=1.66",
+    "click>=8.2",
+]
+
+[project.urls]
+Repository = "https://github.com/Koryto/protodantic"
+Issues = "https://github.com/Koryto/protodantic/issues"
+Changelog = "https://github.com/Koryto/protodantic/blob/master/CHANGELOG.md"
+
+[project.scripts]
+protodantic = "protodantic.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/protodantic/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/protodantic"]

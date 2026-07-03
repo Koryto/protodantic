@@ -1,0 +1,9 @@
+syntax = "proto2";
+
+package test.p2;
+
+message Legacy {
+  required int32 id = 1;
+  optional string name = 2 [default = "anon"];
+  repeated int32 nums = 3;
+}

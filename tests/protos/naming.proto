@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package test.naming;
+
+// Field names that are python keywords or pydantic-reserved names.
+message Hazard {
+  string class = 1;
+  int32 from = 2;
+  bool import = 3;
+  repeated string global = 4;
+  string model_config = 5;
+}

@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package test.recursion;
+
+// Self-recursive message
+message TreeNode {
+  string name = 1;
+  repeated TreeNode children = 2;
+}
+
+// Mutually recursive messages
+message Ping {
+  string tag = 1;
+  Pong pong = 2;
+}
+
+message Pong {
+  string tag = 1;
+  Ping ping = 2;
+}

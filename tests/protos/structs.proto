@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package test.structs;
+
+import "google/protobuf/struct.proto";
+
+message Blob {
+  google.protobuf.Struct meta = 1;
+  google.protobuf.Value single = 2;
+  google.protobuf.ListValue items = 3;
+}
