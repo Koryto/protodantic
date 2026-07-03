@@ -101,3 +101,15 @@ def test_any_field_unset_is_none(generate):
     mod = generate("anypayload.proto")
     restored = mod.Envelope.from_proto_bytes(mod.Envelope(id="e-2").to_proto_bytes())
     assert restored.payload is None
+
+
+def test_any_with_unregistered_type_is_clear_error(generate):
+    """Unpacking an Any whose type_url has no imported model raises LookupError
+    naming the missing type — never a silent wrong value."""
+    mod = generate("anypayload.proto")
+    raw = mod.Envelope.proto_class()()
+    raw.id = "e-3"
+    raw.payload.type_url = "type.googleapis.com/unknown.Type"
+    raw.payload.value = b"\x0a\x03abc"
+    with pytest.raises(LookupError, match="unknown.Type"):
+        mod.Envelope.from_proto(raw)

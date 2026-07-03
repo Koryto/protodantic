@@ -3,6 +3,8 @@ including boundary values, and proto integer range constraints are enforced by
 pydantic validation at model construction time.
 """
 
+import math
+
 import pytest
 from pydantic import ValidationError
 
@@ -81,3 +83,24 @@ def test_string_field_rejects_wrong_type(mod):
     """Pydantic type validation applies to generated models."""
     with pytest.raises(ValidationError):
         mod.ScalarSink(f_string=12345)
+
+
+def test_nan_and_infinity_roundtrip(mod):
+    """NaN and ±Infinity are valid proto float/double values on the wire."""
+    sink = mod.ScalarSink(
+        f_double=float("nan"),
+        f_float=float("inf"),
+        r_double=[float("-inf"), 1.0],
+    )
+    restored = mod.ScalarSink.from_proto_bytes(sink.to_proto_bytes())
+    assert math.isnan(restored.f_double)
+    assert restored.f_float == float("inf")
+    assert restored.r_double == [float("-inf"), 1.0]
+
+
+def test_nan_and_infinity_proto_json(mod):
+    """proto3 JSON encodes non-finite floats as "NaN"/"Infinity" strings."""
+    sink = mod.ScalarSink(f_double=float("nan"), f_float=float("-inf"))
+    restored = mod.ScalarSink.from_proto_json(sink.to_proto_json())
+    assert math.isnan(restored.f_double)
+    assert restored.f_float == float("-inf")

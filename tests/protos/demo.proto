@@ -40,4 +40,5 @@ message User {
     bool dark_mode = 1;
   }
   Settings settings = 17;
+  string legacy_field = 18 [json_name = "legacyName"];
 }

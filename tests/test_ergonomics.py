@@ -56,6 +56,14 @@ def test_proto_json_uses_canonical_names(mod):
     assert restored == full_user(mod)
 
 
+def test_json_name_option_respected(mod):
+    """A [json_name = ...] override is honored in proto JSON, both directions."""
+    user = mod.User(id=1, legacy_field="v")
+    text = user.to_proto_json()
+    assert "legacyName" in text
+    assert mod.User.from_proto_json(text).legacy_field == "v"
+
+
 def test_mutation_then_serialize(mod):
     user = full_user(mod)
     user.tags.append("y")

@@ -98,8 +98,3 @@ def test_json_roundtrip(demo):
     user = full_user(demo)
     restored = demo.User.from_proto_json(user.to_proto_json())
     assert restored == user
-
-
-def test_validation_still_applies(demo):
-    with pytest.raises(Exception):
-        demo.User(id="not-an-int-at-all")
