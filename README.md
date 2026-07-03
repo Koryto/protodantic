@@ -7,10 +7,10 @@ Point it at your `.proto` files and it generates plain pydantic v2 models — wi
 ## Install
 
 ```sh
-uv add proto-dantic   # or: pip install proto-dantic
+uv add protodantic-py   # or: pip install protodantic-py
 ```
 
-The distribution is named `proto-dantic`; the import stays `protodantic`:
+The distribution is named `protodantic-py` (the plain name is squatted on PyPI); the import stays `protodantic`:
 
 ```python
 import protodantic

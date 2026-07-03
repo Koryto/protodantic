@@ -1,5 +1,5 @@
 [project]
-name = "proto-dantic"
+name = "protodantic-py"
 dynamic = ["version"]
 description = "Bidirectional bridge between Protocol Buffers and Pydantic: generate pydantic models from .proto files with lossless round-trips to proto messages and wire bytes"
 readme = "README.md"
