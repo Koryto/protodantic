@@ -1,5 +1,10 @@
 # protodantic
 
+[![CI](https://github.com/Koryto/protodantic/actions/workflows/ci.yml/badge.svg)](https://github.com/Koryto/protodantic/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/protodantic-py)](https://pypi.org/project/protodantic-py/)
+[![Python](https://img.shields.io/pypi/pyversions/protodantic-py)](https://pypi.org/project/protodantic-py/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Bidirectional bridge between **Protocol Buffers** and **Pydantic**.
 
 Point it at your `.proto` files and it generates plain pydantic v2 models — with full validation — where every model round-trips losslessly to and from real protobuf messages, wire bytes, and proto JSON. The pydantic → proto direction is a first-class citizen: `to_proto_bytes()` produces genuine wire-format output that any protobuf consumer in any language can parse.

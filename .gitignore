@@ -14,8 +14,18 @@ playground.py
 
 # Python
 **/__pycache__/
+*.py[cod]
 *$py.class
 .venv/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
 dist/
+build/
 *.egg-info/
+
+# IDE (editors beyond .idea)
+.vscode/

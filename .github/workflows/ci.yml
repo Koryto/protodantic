@@ -5,6 +5,9 @@ on:
   push:
     branches: [master, development]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     strategy:
