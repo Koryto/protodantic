@@ -60,6 +60,17 @@ def test_cli_bad_proto_fails_nonzero(tmp_path):
     assert "error" in result.output.lower() or "error" in result.stderr.lower()
 
 
+def test_cli_unwritable_output_fails_cleanly(tmp_path):
+    """A bad -o target (e.g. an existing directory) reports a clean error,
+    not a traceback."""
+    result = CliRunner().invoke(
+        main, ["generate", str(PROTO_DIR / "common.proto"), "-o", str(tmp_path)]
+    )
+    assert result.exit_code == 1
+    assert result.exception is None or not isinstance(result.exception, OSError)
+    assert "error" in result.output.lower() or "error" in result.stderr.lower()
+
+
 def test_cli_version():
     result = CliRunner().invoke(main, ["--version"])
     assert result.exit_code == 0

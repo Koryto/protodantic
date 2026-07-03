@@ -339,6 +339,7 @@ class ProtoModel(BaseModel):
         return cls.from_proto(cls.proto_class().FromString(data))
 
     @classmethod
-    def from_proto_json(cls, data: str) -> Self:
-        """Parse canonical proto JSON into a model instance."""
-        return cls.from_proto(json_format.Parse(data, cls._new_message()))
+    def from_proto_json(cls, data: str, **kwargs: Any) -> Self:
+        """Parse canonical proto JSON into a model instance. kwargs pass
+        through to json_format.Parse (e.g. ignore_unknown_fields=True)."""
+        return cls.from_proto(json_format.Parse(data, cls._new_message(), **kwargs))

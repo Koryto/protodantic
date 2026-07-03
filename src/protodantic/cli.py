@@ -30,12 +30,11 @@ def generate(protos: tuple[str, ...], includes: tuple[str, ...], out: str) -> No
     try:
         fdset = compile_fdset(protos=protos, includes=includes)
         source = generate_source(fdset_bytes=fdset)
-    except (RuntimeError, NotImplementedError, ValueError) as exc:
+        out_path = Path(out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(source, encoding="utf-8")
+    except (RuntimeError, NotImplementedError, ValueError, OSError) as exc:
         raise click.ClickException(str(exc)) from exc
-
-    out_path = Path(out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(source, encoding="utf-8")
     click.echo(f"wrote {out_path}")
 
 

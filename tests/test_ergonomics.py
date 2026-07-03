@@ -56,6 +56,17 @@ def test_proto_json_uses_canonical_names(mod):
     assert restored == full_user(mod)
 
 
+def test_from_proto_json_kwargs_passthrough(mod):
+    """json_format options are exposed both ways — e.g. lenient ingestion of
+    JSON containing fields from a newer schema revision."""
+    import json
+
+    payload = json.loads(full_user(mod).to_proto_json())
+    payload["fieldFromTheFuture"] = 123
+    restored = mod.User.from_proto_json(json.dumps(payload), ignore_unknown_fields=True)
+    assert restored == full_user(mod)
+
+
 def test_json_name_option_respected(mod):
     """A [json_name = ...] override is honored in proto JSON, both directions."""
     user = mod.User(id=1, legacy_field="v")
