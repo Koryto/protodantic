@@ -1,8 +1,3 @@
-"""Field annotations used by generated models: range-constrained integers
-matching proto scalar domains, JSON-ish aliases for the Struct family, and the
-NULL sentinel for explicit JSON null in google.protobuf.Value fields.
-"""
-
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -32,6 +27,7 @@ class _NullType:
     def __bool__(self) -> bool:
         return False
 
+    # copies must preserve identity: `x is NULL` is the documented check
     def __copy__(self) -> _NullType:
         return self
 
@@ -43,7 +39,6 @@ NULL = _NullType()
 
 
 def _strip_null_sentinel(value: Any) -> Any:
-    """Normalize NULL sentinels to None (recursively through containers)."""
     if value is NULL:
         return None
     if isinstance(value, dict):
@@ -53,8 +48,8 @@ def _strip_null_sentinel(value: Any) -> Any:
     return value
 
 
-# In JSON dumps the sentinel becomes a real null; python-mode dumps keep it so
-# NULL-vs-unset survives a model_dump()/model_validate() round-trip.
+# JSON dumps turn the sentinel into a real null; python-mode dumps keep it so
+# NULL-vs-unset survives a model_dump()/model_validate() round-trip
 _NullSafe = PlainSerializer(_strip_null_sentinel, when_used="json")
 
 Struct = Annotated[dict[str, Any], _NullSafe]

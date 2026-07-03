@@ -1,55 +1,54 @@
-"""Generate pydantic model source code from a serialized FileDescriptorSet."""
-
 from __future__ import annotations
 
 import base64
 import textwrap
 from collections import Counter
+from typing import NamedTuple
 
-from google.protobuf import descriptor_pb2
+from google.protobuf import any_pb2, descriptor_pb2, duration_pb2, struct_pb2, timestamp_pb2, wrappers_pb2
 from google.protobuf.descriptor import Descriptor, EnumDescriptor, FieldDescriptor, OneofDescriptor
 
-from protodantic._version import __version__
-from protodantic.runtime import load_pool, python_field_name
+from ._version import __version__
+from .runtime import load_pool, python_field_name
 
 # proto scalar type -> (python annotation, default expression); protodantic
-# type aliases are referenced through the _pt module alias so user message
-# names can never shadow them in the generated module
+# names go through the _pd module alias so user message names can never
+# shadow them inside the generated module
 _SCALARS: dict[int, tuple[str, str]] = {
     FieldDescriptor.TYPE_DOUBLE: ("float", "0.0"),
     FieldDescriptor.TYPE_FLOAT: ("float", "0.0"),
-    FieldDescriptor.TYPE_INT64: ("_pt.Int64", "0"),
-    FieldDescriptor.TYPE_UINT64: ("_pt.UInt64", "0"),
-    FieldDescriptor.TYPE_INT32: ("_pt.Int32", "0"),
-    FieldDescriptor.TYPE_FIXED64: ("_pt.UInt64", "0"),
-    FieldDescriptor.TYPE_FIXED32: ("_pt.UInt32", "0"),
+    FieldDescriptor.TYPE_INT64: ("_pd.Int64", "0"),
+    FieldDescriptor.TYPE_UINT64: ("_pd.UInt64", "0"),
+    FieldDescriptor.TYPE_INT32: ("_pd.Int32", "0"),
+    FieldDescriptor.TYPE_FIXED64: ("_pd.UInt64", "0"),
+    FieldDescriptor.TYPE_FIXED32: ("_pd.UInt32", "0"),
     FieldDescriptor.TYPE_BOOL: ("bool", "False"),
     FieldDescriptor.TYPE_STRING: ("str", '""'),
     FieldDescriptor.TYPE_BYTES: ("bytes", 'b""'),
-    FieldDescriptor.TYPE_UINT32: ("_pt.UInt32", "0"),
-    FieldDescriptor.TYPE_SFIXED32: ("_pt.Int32", "0"),
-    FieldDescriptor.TYPE_SFIXED64: ("_pt.Int64", "0"),
-    FieldDescriptor.TYPE_SINT32: ("_pt.Int32", "0"),
-    FieldDescriptor.TYPE_SINT64: ("_pt.Int64", "0"),
+    FieldDescriptor.TYPE_UINT32: ("_pd.UInt32", "0"),
+    FieldDescriptor.TYPE_SFIXED32: ("_pd.Int32", "0"),
+    FieldDescriptor.TYPE_SFIXED64: ("_pd.Int64", "0"),
+    FieldDescriptor.TYPE_SINT32: ("_pd.Int32", "0"),
+    FieldDescriptor.TYPE_SINT64: ("_pd.Int64", "0"),
 }
 
-# well-known types handled by the runtime instead of generated classes
+# well-known types are handled by the runtime, not generated as classes
 _WKT_PY: dict[str, str] = {
-    "google.protobuf.Timestamp": "datetime.datetime",
-    "google.protobuf.Duration": "datetime.timedelta",
-    "google.protobuf.Any": "Any",
-    "google.protobuf.Struct": "_pt.Struct",
-    "google.protobuf.Value": "_pt.Value",
-    "google.protobuf.ListValue": "_pt.ListValue",
-    "google.protobuf.DoubleValue": "float",
-    "google.protobuf.FloatValue": "float",
-    "google.protobuf.Int64Value": "_pt.Int64",
-    "google.protobuf.UInt64Value": "_pt.UInt64",
-    "google.protobuf.Int32Value": "_pt.Int32",
-    "google.protobuf.UInt32Value": "_pt.UInt32",
-    "google.protobuf.BoolValue": "bool",
-    "google.protobuf.StringValue": "str",
-    "google.protobuf.BytesValue": "bytes",
+    timestamp_pb2.Timestamp.DESCRIPTOR.full_name: "datetime.datetime",
+    duration_pb2.Duration.DESCRIPTOR.full_name: "datetime.timedelta",
+    any_pb2.Any.DESCRIPTOR.full_name: "Any",
+    struct_pb2.Struct.DESCRIPTOR.full_name: "_pd.Struct",
+    struct_pb2.Value.DESCRIPTOR.full_name: "_pd.Value",
+    struct_pb2.ListValue.DESCRIPTOR.full_name: "_pd.ListValue",
+    wrappers_pb2.DoubleValue.DESCRIPTOR.full_name: "float",
+    wrappers_pb2.FloatValue.DESCRIPTOR.full_name: "float",
+    wrappers_pb2.Int64Value.DESCRIPTOR.full_name: "_pd.Int64",
+    wrappers_pb2.UInt64Value.DESCRIPTOR.full_name: "_pd.UInt64",
+    wrappers_pb2.Int32Value.DESCRIPTOR.full_name: "_pd.Int32",
+    wrappers_pb2.UInt32Value.DESCRIPTOR.full_name: "_pd.UInt32",
+    wrappers_pb2.BoolValue.DESCRIPTOR.full_name: "bool",
+    wrappers_pb2.StringValue.DESCRIPTOR.full_name: "str",
+    wrappers_pb2.BytesValue.DESCRIPTOR.full_name: "bytes",
 }
 
 _HEADER = f'''\
@@ -63,156 +62,184 @@ from typing import Any, ClassVar
 
 from pydantic import Field
 
-from protodantic import types as _pt
-from protodantic.runtime import OpenEnum, ProtoModel, load_pool
+import protodantic as _pd
 
 '''
 
+_B64_LINE_WIDTH = 84
+
+
+class _Entry(NamedTuple):
+    kind: str  # "message" | "enum"
+    desc: Descriptor | EnumDescriptor
+    base_name: str
+    package: str
+
+
+def generate_source(fdset_bytes: bytes) -> str:
+    """Render one python module with pydantic models for every message in the
+    serialized FileDescriptorSet."""
+    return _ModuleGenerator(fdset_bytes=fdset_bytes).render()
+
+
+def _is_wkt_file(file_name: str) -> bool:
+    return file_name.startswith("google/protobuf/")
+
 
 def _is_synthetic_oneof(oneof: OneofDescriptor) -> bool:
-    """proto3 `optional` fields are backed by single-field synthetic oneofs
-    named `_<field>`; those are presence plumbing, not user-facing groups."""
+    # proto3 `optional` is backed by a single-field oneof named _<field>
     fields = list(oneof.fields)
     return len(fields) == 1 and oneof.name == "_" + fields[0].name
 
 
-def generate_source(fdset_bytes: bytes) -> str:
-    """Render one python module with models for every message in the set.
+class _ModuleGenerator:
+    def __init__(self, *, fdset_bytes: bytes) -> None:
+        self._fdset_bytes = fdset_bytes
+        self._fdset = descriptor_pb2.FileDescriptorSet.FromString(fdset_bytes)
+        self._pool = load_pool(fdset_bytes)
+        self._entries: list[_Entry] = []
+        self._py_names: dict[str, str] = {}
 
-    Files under google/protobuf/ are treated as runtime-provided (Timestamp,
-    Duration, Any, Struct, wrappers...) and get no generated classes.
-    """
-    fdset = descriptor_pb2.FileDescriptorSet.FromString(fdset_bytes)
+    def render(self) -> str:
+        self._reject_non_proto3()
+        self._collect_entries()
+        self._assign_python_names()
 
-    for file_proto in fdset.file:
-        if file_proto.name.startswith("google/protobuf/"):
-            continue
-        if file_proto.syntax != "proto3":
-            raise NotImplementedError(
-                f"{file_proto.name}: protodantic supports proto3 only, "
-                f"got {file_proto.syntax or 'proto2'}"
-            )
+        parts = [_HEADER, self._render_pool()]
+        parts.extend(self._render_enum(desc=e.desc) for e in self._entries if e.kind == "enum")
+        parts.extend(self._render_message(desc=e.desc) for e in self._entries if e.kind == "message")
+        rebuild = self._render_rebuild()
+        if rebuild:
+            parts.append(rebuild)
+        return "\n\n".join(parts)
 
-    pool = load_pool(fdset_bytes)
+    def _reject_non_proto3(self) -> None:
+        for file_proto in self._fdset.file:
+            if _is_wkt_file(file_proto.name):
+                continue
+            if file_proto.syntax != "proto3":
+                raise NotImplementedError(
+                    f"{file_proto.name}: protodantic supports proto3 only, "
+                    f"got {file_proto.syntax or 'proto2'}"
+                )
 
-    # (kind, descriptor, base python name, package) in emission order
-    entries: list[tuple[str, Descriptor | EnumDescriptor, str, str]] = []
+    def _collect_entries(self) -> None:
+        for file_proto in self._fdset.file:
+            if _is_wkt_file(file_proto.name):
+                continue
+            file_desc = self._pool.FindFileByName(file_proto.name)
+            for enum_desc in file_desc.enum_types_by_name.values():
+                self._register_enum(desc=enum_desc, prefix="", package=file_desc.package)
+            for msg_desc in file_desc.message_types_by_name.values():
+                self._register_message(desc=msg_desc, prefix="", package=file_desc.package)
 
-    def register_message(desc: Descriptor, prefix: str, package: str) -> None:
+    def _register_message(self, *, desc: Descriptor, prefix: str, package: str) -> None:
         if desc.GetOptions().map_entry:
             return
-        base = prefix + desc.name
-        entries.append(("message", desc, base, package))
+        base_name = prefix + desc.name
+        self._entries.append(_Entry(kind="message", desc=desc, base_name=base_name, package=package))
         for enum_desc in desc.enum_types:
-            entries.append(("enum", enum_desc, f"{base}_{enum_desc.name}", package))
+            self._register_enum(desc=enum_desc, prefix=base_name + "_", package=package)
         for nested in desc.nested_types:
-            register_message(nested, base + "_", package)
+            self._register_message(desc=nested, prefix=base_name + "_", package=package)
 
-    for file_proto in fdset.file:
-        if file_proto.name.startswith("google/protobuf/"):
-            continue
-        file_desc = pool.FindFileByName(file_proto.name)
-        for enum_desc in file_desc.enum_types_by_name.values():
-            entries.append(("enum", enum_desc, enum_desc.name, file_desc.package))
-        for msg_desc in file_desc.message_types_by_name.values():
-            register_message(msg_desc, "", file_desc.package)
+    def _register_enum(self, *, desc: EnumDescriptor, prefix: str, package: str) -> None:
+        self._entries.append(_Entry(kind="enum", desc=desc, base_name=prefix + desc.name, package=package))
 
-    # Same base name in two packages -> qualify with the package path.
-    base_counts = Counter(base for _, _, base, _ in entries)
-    py_names: dict[str, str] = {}
-    for _, desc, base, package in entries:
-        if base_counts[base] > 1 and package:
-            py_names[desc.full_name] = f"{package.replace('.', '_')}_{base}"
-        else:
-            py_names[desc.full_name] = base
+    def _assign_python_names(self) -> None:
+        # same base name in two packages -> qualify with the package path
+        base_counts = Counter(entry.base_name for entry in self._entries)
+        for entry in self._entries:
+            if base_counts[entry.base_name] > 1 and entry.package:
+                name = f"{entry.package.replace('.', '_')}_{entry.base_name}"
+            else:
+                name = entry.base_name
+            self._py_names[entry.desc.full_name] = name
 
-    def base_type(fd: FieldDescriptor) -> str:
+    def _base_type(self, fd: FieldDescriptor) -> str:
         if fd.type == FieldDescriptor.TYPE_MESSAGE:
             full_name = fd.message_type.full_name
             if full_name in _WKT_PY:
                 return _WKT_PY[full_name]
-            return py_names[full_name]
+            return self._py_names[full_name]
         if fd.type == FieldDescriptor.TYPE_ENUM:
-            return py_names[fd.enum_type.full_name]
+            return self._py_names[fd.enum_type.full_name]
         return _SCALARS[fd.type][0]
 
-    def annotation(fd: FieldDescriptor) -> str:
-        if fd.type == FieldDescriptor.TYPE_MESSAGE and fd.message_type.GetOptions().map_entry:
+    def _annotation(self, fd: FieldDescriptor) -> str:
+        if _is_map_field(fd):
             key_fd = fd.message_type.fields_by_name["key"]
             value_fd = fd.message_type.fields_by_name["value"]
-            return f"dict[{base_type(key_fd)}, {base_type(value_fd)}]"
+            return f"dict[{self._base_type(key_fd)}, {self._base_type(value_fd)}]"
         if fd.is_repeated:
-            return f"list[{base_type(fd)}]"
+            return f"list[{self._base_type(fd)}]"
         if fd.has_presence:
-            return f"{base_type(fd)} | None"
-        return base_type(fd)
+            return f"{self._base_type(fd)} | None"
+        return self._base_type(fd)
 
-    def default(fd: FieldDescriptor) -> str:
-        """Default expression; aliased fields need Field(...) to carry the alias."""
+    def _default(self, fd: FieldDescriptor) -> str:
         alias = f'"{fd.name}"' if python_field_name(fd.name) != fd.name else None
-        if fd.type == FieldDescriptor.TYPE_MESSAGE and fd.message_type.GetOptions().map_entry:
-            factory = "Field(default_factory=dict"
-            return f'{factory}, alias={alias})' if alias else factory + ")"
+        if _is_map_field(fd):
+            return f"Field(default_factory=dict, alias={alias})" if alias else "Field(default_factory=dict)"
         if fd.is_repeated:
-            factory = "Field(default_factory=list"
-            return f'{factory}, alias={alias})' if alias else factory + ")"
+            return f"Field(default_factory=list, alias={alias})" if alias else "Field(default_factory=list)"
         if fd.has_presence:
             plain = "None"
         elif fd.type == FieldDescriptor.TYPE_ENUM:
-            plain = f"{py_names[fd.enum_type.full_name]}(0)"
+            plain = f"{self._py_names[fd.enum_type.full_name]}(0)"
         else:
             plain = _SCALARS[fd.type][1]
-        if alias:
-            return f"Field(default={plain}, alias={alias})"
-        return plain
+        return f"Field(default={plain}, alias={alias})" if alias else plain
 
-    parts: list[str] = [_HEADER]
+    def _render_pool(self) -> str:
+        encoded = base64.b64encode(self._fdset_bytes).decode("ascii")
+        chunks = "\n".join(f'    "{line}"' for line in textwrap.wrap(encoded, _B64_LINE_WIDTH))
+        return f"_POOL = _pd.load_pool(base64.b64decode(\n{chunks}\n))\n"
 
-    encoded = base64.b64encode(fdset_bytes).decode("ascii")
-    chunks = "\n".join(f'    "{line}"' for line in textwrap.wrap(encoded, 84))
-    parts.append(f"_POOL = load_pool(base64.b64decode(\n{chunks}\n))\n")
+    def _render_enum(self, *, desc: EnumDescriptor) -> str:
+        lines = [f"class {self._py_names[desc.full_name]}(_pd.OpenEnum):"]
+        lines.extend(f"    {value.name} = {value.number}" for value in desc.values)
+        return "\n".join(lines) + "\n"
 
-    for kind, desc, _, _ in entries:
-        if kind != "enum":
-            continue
-        lines = [f"class {py_names[desc.full_name]}(OpenEnum):"]
-        for value in desc.values:
-            lines.append(f"    {value.name} = {value.number}")
-        parts.append("\n".join(lines) + "\n")
-
-    message_names: list[str] = []
-    for kind, desc, _, _ in entries:
-        if kind != "message":
-            continue
-        py_name = py_names[desc.full_name]
-        message_names.append(py_name)
+    def _render_message(self, *, desc: Descriptor) -> str:
         lines = [
-            f"class {py_name}(ProtoModel):",
+            f"class {self._py_names[desc.full_name]}(_pd.ProtoModel):",
             f'    __proto_full_name__: ClassVar[str] = "{desc.full_name}"',
             "    __proto_pool__: ClassVar[Any] = _POOL",
         ]
-        real_oneofs = [o for o in desc.oneofs if not _is_synthetic_oneof(o)]
-        if real_oneofs:
-            groups = ", ".join(
-                '"{}": ({})'.format(
-                    oneof.name,
-                    ", ".join(f'"{python_field_name(f.name)}"' for f in oneof.fields)
-                    + ("," if len(oneof.fields) == 1 else ""),
-                )
-                for oneof in real_oneofs
-            )
-            lines.append(
-                f"    __proto_oneofs__: ClassVar[dict[str, tuple[str, ...]]] = {{{groups}}}"
-            )
+        oneofs = self._render_oneofs(desc=desc)
+        if oneofs:
+            lines.append(oneofs)
         if desc.fields:
             lines.append("")
-        for fd in desc.fields:
-            lines.append(f"    {python_field_name(fd.name)}: {annotation(fd)} = {default(fd)}")
-        parts.append("\n".join(lines) + "\n")
+        lines.extend(
+            f"    {python_field_name(fd.name)}: {self._annotation(fd)} = {self._default(fd)}"
+            for fd in desc.fields
+        )
+        return "\n".join(lines) + "\n"
 
-    if message_names:
-        names = ", ".join(message_names)
-        trailing = "," if len(message_names) == 1 else ""
-        parts.append(f"for _model in ({names}{trailing}):\n    _model.model_rebuild()\ndel _model\n")
+    def _render_oneofs(self, *, desc: Descriptor) -> str | None:
+        real_oneofs = [o for o in desc.oneofs if not _is_synthetic_oneof(o)]
+        if not real_oneofs:
+            return None
+        groups = ", ".join(
+            '"{}": ({})'.format(
+                oneof.name,
+                ", ".join(f'"{python_field_name(f.name)}"' for f in oneof.fields)
+                + ("," if len(oneof.fields) == 1 else ""),
+            )
+            for oneof in real_oneofs
+        )
+        return f"    __proto_oneofs__: ClassVar[dict[str, tuple[str, ...]]] = {{{groups}}}"
 
-    return "\n\n".join(parts)
+    def _render_rebuild(self) -> str | None:
+        names = [self._py_names[e.desc.full_name] for e in self._entries if e.kind == "message"]
+        if not names:
+            return None
+        joined = ", ".join(names)
+        trailing = "," if len(names) == 1 else ""
+        return f"for _model in ({joined}{trailing}):\n    _model.model_rebuild()\ndel _model\n"
+
+
+def _is_map_field(fd: FieldDescriptor) -> bool:
+    return fd.type == FieldDescriptor.TYPE_MESSAGE and fd.message_type.GetOptions().map_entry

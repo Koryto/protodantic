@@ -85,6 +85,12 @@ def test_string_field_rejects_wrong_type(mod):
         mod.ScalarSink(f_string=12345)
 
 
+def test_unknown_field_rejected(mod):
+    """extra='forbid': a typo'd field name fails instead of being ignored."""
+    with pytest.raises(ValidationError):
+        mod.ScalarSink(f_sting="typo")
+
+
 def test_range_enforced_on_assignment(mod):
     """Proto range constraints also apply when mutating an existing model."""
     sink = mod.ScalarSink()

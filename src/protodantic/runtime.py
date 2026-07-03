@@ -1,11 +1,3 @@
-"""Runtime support for generated protodantic models.
-
-`ProtoModel` is the base class for all generated models. It converts between
-pydantic instances and protobuf messages built dynamically from the descriptor
-pool that each generated module embeds, so both directions (pydantic -> proto
-and proto -> pydantic) use the real protobuf wire format.
-"""
-
 from __future__ import annotations
 
 import datetime
@@ -13,37 +5,47 @@ import enum
 import keyword
 from typing import Any, ClassVar, Self
 
-from google.protobuf import descriptor_pb2, descriptor_pool, json_format, message_factory
+from google.protobuf import (
+    any_pb2,
+    descriptor_pb2,
+    descriptor_pool,
+    duration_pb2,
+    json_format,
+    message_factory,
+    struct_pb2,
+    timestamp_pb2,
+    wrappers_pb2,
+)
 from google.protobuf.descriptor import FieldDescriptor
 from google.protobuf.message import Message
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from protodantic.types import NULL, _strip_null_sentinel
+from .types import NULL, _strip_null_sentinel
 
-_TIMESTAMP = "google.protobuf.Timestamp"
-_DURATION = "google.protobuf.Duration"
-_ANY = "google.protobuf.Any"
-_STRUCT_TYPES = frozenset({
-    "google.protobuf.Struct",
-    "google.protobuf.Value",
-    "google.protobuf.ListValue",
-})
-_WRAPPER_TYPES = frozenset({
-    "google.protobuf.DoubleValue",
-    "google.protobuf.FloatValue",
-    "google.protobuf.Int64Value",
-    "google.protobuf.UInt64Value",
-    "google.protobuf.Int32Value",
-    "google.protobuf.UInt32Value",
-    "google.protobuf.BoolValue",
-    "google.protobuf.StringValue",
-    "google.protobuf.BytesValue",
-})
+_TIMESTAMP = timestamp_pb2.Timestamp.DESCRIPTOR.full_name
+_DURATION = duration_pb2.Duration.DESCRIPTOR.full_name
+_ANY = any_pb2.Any.DESCRIPTOR.full_name
+_VALUE = struct_pb2.Value.DESCRIPTOR.full_name
+_STRUCT_TYPES = frozenset(
+    m.DESCRIPTOR.full_name for m in (struct_pb2.Struct, struct_pb2.Value, struct_pb2.ListValue)
+)
+_WRAPPER_TYPES = frozenset(
+    m.DESCRIPTOR.full_name
+    for m in (
+        wrappers_pb2.DoubleValue,
+        wrappers_pb2.FloatValue,
+        wrappers_pb2.Int64Value,
+        wrappers_pb2.UInt64Value,
+        wrappers_pb2.Int32Value,
+        wrappers_pb2.UInt32Value,
+        wrappers_pb2.BoolValue,
+        wrappers_pb2.StringValue,
+        wrappers_pb2.BytesValue,
+    )
+)
 
-# proto full name -> generated model class, populated as generated modules import
 _MODEL_REGISTRY: dict[str, type[ProtoModel]] = {}
 
-# names a proto field cannot use as a python attribute
 _RESERVED_NAMES = frozenset({
     "proto_class",
     "to_proto",
@@ -56,8 +58,8 @@ _RESERVED_NAMES = frozenset({
 
 
 def python_field_name(proto_name: str) -> str:
-    """Python attribute name for a proto field: keywords and reserved names get
-    a trailing underscore; the proto name stays available as a pydantic alias."""
+    """Python attribute for a proto field: keywords, model_*, and ProtoModel API
+    names get a trailing underscore; the proto name stays usable as an alias."""
     if (
         keyword.iskeyword(proto_name)
         or proto_name.startswith("model_")
@@ -68,12 +70,8 @@ def python_field_name(proto_name: str) -> str:
 
 
 def model_for(full_name: str) -> type[ProtoModel]:
-    """Look up the generated model class for a proto full name (e.g. "pkg.Msg").
-
-    The module defining the model must have been imported first. If several
-    imported modules define the same proto type, the most recently imported
-    one wins (last-import-wins).
-    """
+    """Generated model class for a proto full name (e.g. "pkg.Msg"). The module
+    defining it must be imported first; on duplicates the last import wins."""
     try:
         return _MODEL_REGISTRY[full_name]
     except KeyError:
@@ -92,8 +90,8 @@ def load_pool(fdset_bytes: bytes) -> descriptor_pool.DescriptorPool:
 
 
 class OpenEnum(enum.IntEnum):
-    """IntEnum matching proto3 open-enum semantics: values not declared in the
-    schema are preserved as pseudo-members instead of raising."""
+    """IntEnum matching proto3 open-enum semantics: values missing from the
+    schema become pseudo-members instead of raising."""
 
     @classmethod
     def _missing_(cls, value: object) -> OpenEnum | None:
@@ -113,12 +111,11 @@ def _is_map(fd: FieldDescriptor) -> bool:
 
 
 def _scalar_to_proto(value: Any) -> Any:
-    # IntEnum members (incl. open-enum pseudo-members) flatten to plain ints
+    # enum members (incl. open-enum pseudo-members) flatten to plain ints
     return int(value) if isinstance(value, int) and not isinstance(value, bool) else value
 
 
-def _fill_message(target: Message, value: Any) -> None:
-    """Copy a python value into an already-attached proto message field."""
+def _fill_message(*, target: Message, value: Any) -> None:
     full_name = target.DESCRIPTOR.full_name
     if full_name == _TIMESTAMP:
         target.FromDatetime(value)
@@ -145,20 +142,12 @@ def _message_to_python(msg: Message) -> Any:
     if full_name == _DURATION:
         return msg.ToTimedelta()
     if full_name == _ANY:
-        type_name = msg.type_url.rpartition("/")[2]
-        model_cls = _MODEL_REGISTRY.get(type_name)
-        if model_cls is None:
-            raise LookupError(
-                f"cannot unpack Any: no generated model imported for {type_name!r}"
-            )
-        inner = model_cls.proto_class()()
-        if not msg.Unpack(inner):
-            raise ValueError(f"failed to unpack Any containing {type_name!r}")
-        return model_cls.from_proto(inner)
+        return _unpack_any(msg)
     if full_name in _STRUCT_TYPES:
         result = json_format.MessageToDict(msg)
-        if full_name == "google.protobuf.Value" and result is None:
-            return NULL  # a set-but-null Value; None is reserved for "unset"
+        # a set-but-null Value maps to NULL; None is reserved for "unset"
+        if full_name == _VALUE and result is None:
+            return NULL
         return result
     if full_name in _WRAPPER_TYPES:
         return msg.value
@@ -171,28 +160,91 @@ def _message_to_python(msg: Message) -> Any:
     return model_cls.from_proto(msg)
 
 
+def _unpack_any(msg: Message) -> ProtoModel:
+    type_name = msg.type_url.rpartition("/")[2]
+    model_cls = _MODEL_REGISTRY.get(type_name)
+    if model_cls is None:
+        raise LookupError(
+            f"cannot unpack Any: no generated model imported for {type_name!r}"
+        )
+    inner = model_cls._new_message()
+    if not msg.Unpack(inner):
+        raise ValueError(f"failed to unpack Any containing {type_name!r}")
+    return model_cls.from_proto(inner)
+
+
+def _set_proto_field(*, msg: Message, fd: FieldDescriptor, value: Any) -> None:
+    if _is_map(fd):
+        _fill_map(target=getattr(msg, fd.name), fd=fd, value=value)
+        return
+    if fd.is_repeated:
+        _fill_repeated(target=getattr(msg, fd.name), fd=fd, value=value)
+        return
+    if fd.type == FieldDescriptor.TYPE_MESSAGE:
+        _fill_message(target=getattr(msg, fd.name), value=value)
+        return
+    setattr(msg, fd.name, _scalar_to_proto(value))
+
+
+def _fill_map(*, target: Any, fd: FieldDescriptor, value: dict) -> None:
+    value_fd = fd.message_type.fields_by_name["value"]
+    if value_fd.type == FieldDescriptor.TYPE_MESSAGE:
+        for key, item in value.items():
+            _fill_message(target=target[key], value=item)
+    else:
+        for key, item in value.items():
+            target[key] = _scalar_to_proto(item)
+
+
+def _fill_repeated(*, target: Any, fd: FieldDescriptor, value: list) -> None:
+    if fd.type == FieldDescriptor.TYPE_MESSAGE:
+        for item in value:
+            _fill_message(target=target.add(), value=item)
+    else:
+        target.extend(_scalar_to_proto(item) for item in value)
+
+
+def _read_proto_field(*, msg: Message, fd: FieldDescriptor) -> Any:
+    if _is_map(fd):
+        return _read_map(target=getattr(msg, fd.name), fd=fd)
+    if fd.is_repeated:
+        value = getattr(msg, fd.name)
+        if fd.type == FieldDescriptor.TYPE_MESSAGE:
+            return [_message_to_python(item) for item in value]
+        return list(value)
+    if fd.has_presence and not msg.HasField(fd.name):
+        return None
+    if fd.type == FieldDescriptor.TYPE_MESSAGE:
+        return _message_to_python(getattr(msg, fd.name))
+    return getattr(msg, fd.name)
+
+
+def _read_map(*, target: Any, fd: FieldDescriptor) -> dict:
+    value_fd = fd.message_type.fields_by_name["value"]
+    if value_fd.type == FieldDescriptor.TYPE_MESSAGE:
+        return {key: _message_to_python(item) for key, item in target.items()}
+    return dict(target)
+
+
 class ProtoModel(BaseModel):
     """Pydantic base model bound to a protobuf message type."""
 
     model_config = ConfigDict(
         populate_by_name=True,
         protected_namespaces=(),
-        # proto semantics hold under mutation too (oneofs, ranges); users can
-        # opt out with model_config = ConfigDict(validate_assignment=False)
         validate_assignment=True,
+        extra="forbid",
     )
 
     __proto_full_name__: ClassVar[str] = ""
     __proto_pool__: ClassVar[Any] = None
-    # real (non-synthetic) oneof groups: name -> python field names
     __proto_oneofs__: ClassVar[dict[str, tuple[str, ...]]] = {}
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
         super().__pydantic_init_subclass__(**kwargs)
-        # Only classes that declare __proto_full_name__ in their own body are
-        # registered: plain user subclasses don't hijack resolution, while
-        # re-declaring the name is the explicit opt-in to take over.
+        # own-body declaration only: plain subclasses don't hijack resolution;
+        # re-declaring __proto_full_name__ is the explicit opt-in to take over
         if cls.__dict__.get("__proto_full_name__"):
             _MODEL_REGISTRY[cls.__proto_full_name__] = cls
 
@@ -212,34 +264,18 @@ class ProtoModel(BaseModel):
         descriptor = cls.__proto_pool__.FindMessageTypeByName(cls.__proto_full_name__)
         return message_factory.GetMessageClass(descriptor)
 
-    # -- pydantic -> proto -------------------------------------------------
+    @classmethod
+    def _new_message(cls) -> Message:
+        message_cls = cls.proto_class()
+        return message_cls()
 
     def to_proto(self) -> Message:
         """Convert this model to a protobuf message."""
-        msg = self.proto_class()()
+        msg = self._new_message()
         for fd in msg.DESCRIPTOR.fields:
             value = getattr(self, python_field_name(fd.name))
-            if value is None:
-                continue
-            if fd.is_repeated:
-                target = getattr(msg, fd.name)
-                if _is_map(fd):
-                    value_fd = fd.message_type.fields_by_name["value"]
-                    if value_fd.type == FieldDescriptor.TYPE_MESSAGE:
-                        for key, item in value.items():
-                            _fill_message(target[key], item)
-                    else:
-                        for key, item in value.items():
-                            target[key] = _scalar_to_proto(item)
-                elif fd.type == FieldDescriptor.TYPE_MESSAGE:
-                    for item in value:
-                        _fill_message(target.add(), item)
-                else:
-                    target.extend(_scalar_to_proto(item) for item in value)
-            elif fd.type == FieldDescriptor.TYPE_MESSAGE:
-                _fill_message(getattr(msg, fd.name), value)
-            else:
-                setattr(msg, fd.name, _scalar_to_proto(value))
+            if value is not None:
+                _set_proto_field(msg=msg, fd=fd, value=value)
         return msg
 
     def to_proto_bytes(self) -> bytes:
@@ -250,37 +286,14 @@ class ProtoModel(BaseModel):
         """Serialize this model to canonical proto JSON."""
         return json_format.MessageToJson(self.to_proto(), **kwargs)
 
-    # -- proto -> pydantic -------------------------------------------------
-
     @classmethod
     def from_proto(cls, msg: Message) -> Self:
-        """Build a model instance from a protobuf message.
-
-        Works with any message whose descriptor matches this model's schema —
-        including instances of classic protoc-generated ``_pb2`` classes, so
-        generated models interoperate with existing gRPC/protobuf codebases.
-        """
-        data: dict[str, Any] = {}
-        for fd in msg.DESCRIPTOR.fields:
-            name = python_field_name(fd.name)
-            if fd.is_repeated:
-                value = getattr(msg, fd.name)
-                if _is_map(fd):
-                    value_fd = fd.message_type.fields_by_name["value"]
-                    if value_fd.type == FieldDescriptor.TYPE_MESSAGE:
-                        data[name] = {k: _message_to_python(v) for k, v in value.items()}
-                    else:
-                        data[name] = dict(value)
-                elif fd.type == FieldDescriptor.TYPE_MESSAGE:
-                    data[name] = [_message_to_python(item) for item in value]
-                else:
-                    data[name] = list(value)
-            elif fd.has_presence and not msg.HasField(fd.name):
-                data[name] = None
-            elif fd.type == FieldDescriptor.TYPE_MESSAGE:
-                data[name] = _message_to_python(getattr(msg, fd.name))
-            else:
-                data[name] = getattr(msg, fd.name)
+        """Build a model from a protobuf message. Works with any message whose
+        descriptor matches this schema, including classic _pb2 instances."""
+        data = {
+            python_field_name(fd.name): _read_proto_field(msg=msg, fd=fd)
+            for fd in msg.DESCRIPTOR.fields
+        }
         return cls(**data)
 
     @classmethod
@@ -291,4 +304,4 @@ class ProtoModel(BaseModel):
     @classmethod
     def from_proto_json(cls, data: str) -> Self:
         """Parse canonical proto JSON into a model instance."""
-        return cls.from_proto(json_format.Parse(data, cls.proto_class()()))
+        return cls.from_proto(json_format.Parse(data, cls._new_message()))

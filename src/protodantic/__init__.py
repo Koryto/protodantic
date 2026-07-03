@@ -1,19 +1,22 @@
-"""protodantic: bidirectional bridge between Protocol Buffers and Pydantic."""
+"""Bidirectional bridge between Protocol Buffers and Pydantic."""
 
-from protodantic._version import __version__
-from protodantic.codegen import generate_source
-from protodantic.compiler import compile_fdset
-from protodantic.runtime import NULL, OpenEnum, ProtoModel, load_pool, model_for
-from protodantic.types import Int32, Int64, UInt32, UInt64
+from ._version import __version__
+from .codegen import generate_source
+from .compiler import compile_fdset
+from .runtime import OpenEnum, ProtoModel, load_pool, model_for
+from .types import NULL, Int32, Int64, ListValue, Struct, UInt32, UInt64, Value
 
 __all__ = [
     "Int32",
     "Int64",
+    "ListValue",
     "NULL",
     "OpenEnum",
     "ProtoModel",
+    "Struct",
     "UInt32",
     "UInt64",
+    "Value",
     "__version__",
     "compile_fdset",
     "generate_source",

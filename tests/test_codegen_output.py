@@ -53,4 +53,4 @@ def test_proto_without_package_generates(generate, tmp_path):
     proto.write_text('syntax = "proto3";\nmessage Bare { string x = 1; }\n')
     fdset = compile_fdset([str(proto)])
     source = generate_source(fdset)
-    assert "class Bare(ProtoModel)" in source
+    assert "class Bare(_pd.ProtoModel)" in source

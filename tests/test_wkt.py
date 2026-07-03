@@ -110,6 +110,15 @@ def test_null_sentinel_inside_containers_normalizes_to_none(generate):
     assert restored.items == [None, "x"]
 
 
+def test_null_sentinel_survives_copies(generate):
+    """`is NULL` identity checks must hold across model_copy(deep=True)."""
+    from protodantic import NULL
+
+    mod = generate("structs.proto")
+    clone = mod.Blob(single=NULL).model_copy(deep=True)
+    assert clone.single is NULL
+
+
 def test_null_sentinel_serializes_as_json_null(generate):
     """model_dump_json emits real null for NULL; python-mode dumps keep the
     sentinel so NULL-vs-unset survives dump/validate round-trips."""

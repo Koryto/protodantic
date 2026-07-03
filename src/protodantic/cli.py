@@ -1,43 +1,43 @@
-"""Command-line interface: protodantic <files.proto> -o models.py"""
-
 from __future__ import annotations
 
-import argparse
-import sys
 from pathlib import Path
 
-from protodantic.codegen import generate_source
-from protodantic.compiler import compile_fdset
+import click
+
+from ._version import __version__
+from .codegen import generate_source
+from .compiler import compile_fdset
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog="protodantic",
-        description="Generate pydantic models with proto round-trip support from .proto files.",
-    )
-    parser.add_argument("protos", nargs="+", help=".proto files to compile")
-    parser.add_argument(
-        "-I", "--include", action="append", default=[], metavar="DIR",
-        help="additional import search path (repeatable)",
-    )
-    parser.add_argument(
-        "-o", "--out", required=True, metavar="FILE",
-        help="output python module path (e.g. models.py)",
-    )
-    args = parser.parse_args(argv)
+@click.group(context_settings={"help_option_names": ["-h", "--help"]})
+@click.version_option(__version__, prog_name="protodantic")
+def main() -> None:
+    """Bidirectional bridge between Protocol Buffers and pydantic models."""
 
+
+@main.command()
+@click.argument("protos", nargs=-1, required=True)
+@click.option(
+    "-I", "--include", "includes", multiple=True, metavar="DIR",
+    help="Additional import search path (repeatable).",
+)
+@click.option(
+    "-o", "--out", "out", required=True, metavar="FILE",
+    help="Output python module path (e.g. models.py).",
+)
+def generate(protos: tuple[str, ...], includes: tuple[str, ...], out: str) -> None:
+    """Generate pydantic models from .proto files."""
     try:
-        fdset = compile_fdset(args.protos, args.include)
-        source = generate_source(fdset)
+        fdset = compile_fdset(protos=protos, includes=includes)
+        source = generate_source(fdset_bytes=fdset)
     except (RuntimeError, NotImplementedError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
-    out_path = Path(args.out)
+        raise click.ClickException(str(exc)) from exc
+
+    out_path = Path(out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(source, encoding="utf-8")
-    print(f"wrote {out_path}")
-    return 0
+    click.echo(f"wrote {out_path}")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

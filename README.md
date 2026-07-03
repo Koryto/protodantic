@@ -46,7 +46,7 @@ message User {
 Generate models:
 
 ```sh
-protodantic demo.proto -o models.py
+protodantic generate demo.proto -o models.py
 ```
 
 Then:
