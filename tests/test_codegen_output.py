@@ -47,6 +47,24 @@ def test_generated_code_is_marked_with_version(fdset):
     assert f"protodantic {__version__}" in source
 
 
+def test_flatten_collision_fails_loudly(tmp_path):
+    """Nested-type flattening can collide with a literal underscore name
+    (Outer.Inner vs Outer_Inner) — codegen must refuse with an error naming
+    both proto types, never silently overwrite one class with the other."""
+    proto = tmp_path / "flatcoll.proto"
+    proto.write_text(
+        'syntax = "proto3";\npackage test.flat;\n'
+        "message Outer { message Inner { string a = 1; } Inner inner = 1; }\n"
+        "message Outer_Inner { int32 b = 1; }\n"
+    )
+    fdset = compile_fdset([str(proto)])
+    with pytest.raises(ValueError) as exc_info:
+        generate_source(fdset)
+    message = str(exc_info.value)
+    assert "test.flat.Outer.Inner" in message
+    assert "test.flat.Outer_Inner" in message
+
+
 def test_proto_without_package_generates(generate, tmp_path):
     """Files with no package declaration are handled."""
     proto = tmp_path / "nopkg.proto"

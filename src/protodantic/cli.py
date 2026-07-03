@@ -30,7 +30,7 @@ def generate(protos: tuple[str, ...], includes: tuple[str, ...], out: str) -> No
     try:
         fdset = compile_fdset(protos=protos, includes=includes)
         source = generate_source(fdset_bytes=fdset)
-    except (RuntimeError, NotImplementedError) as exc:
+    except (RuntimeError, NotImplementedError, ValueError) as exc:
         raise click.ClickException(str(exc)) from exc
 
     out_path = Path(out)

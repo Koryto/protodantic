@@ -34,6 +34,26 @@ def test_registry_last_import_wins(tmp_path):
     assert model_for("test.regsem.Token") is not first.Token
 
 
+def test_reimport_does_not_break_earlier_module(tmp_path):
+    """Two generated modules with the same proto types coexist: each module's
+    models resolve nested messages to classes from their own module, so
+    importing a duplicate never breaks previously imported models."""
+    proto = tmp_path / "nestreg.proto"
+    proto.write_text(
+        'syntax = "proto3";\npackage test.nestreg;\n'
+        "message Child { string v = 1; }\nmessage Parent { Child child = 1; }\n"
+    )
+    source = generate_source(compile_fdset([str(proto)]))
+
+    first = _import_source(source, "nestreg_first", tmp_path)
+    data = first.Parent(child=first.Child(v="x")).to_proto_bytes()
+    second = _import_source(source, "nestreg_second", tmp_path)
+
+    restored = first.Parent.from_proto_bytes(data)
+    assert isinstance(restored.child, first.Child)
+    assert isinstance(second.Parent.from_proto_bytes(data).child, second.Child)
+
+
 def test_plain_subclass_does_not_hijack_registry(tmp_path):
     """Subclassing a generated model (e.g. to add validators) must NOT change
     what from_proto/model_for resolve — registration is not inherited."""

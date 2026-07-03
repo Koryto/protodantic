@@ -39,3 +39,21 @@ def test_pydantic_reserved_name_field(mod):
     hazard = mod.Hazard(model_config_="value")
     restored = mod.Hazard.from_proto_bytes(hazard.to_proto_bytes())
     assert restored.model_config_ == "value"
+
+
+def test_message_named_any_does_not_shadow_typing(generate):
+    """A user message named `Any` must not hijack the typing.Any annotation of
+    real google.protobuf.Any fields — generated imports are shadow-proof."""
+    mod = generate("shadowing.proto")
+    env = mod.Env(payload=mod.Note(text="not an Any instance"))
+    restored = mod.Env.from_proto_bytes(env.to_proto_bytes())
+    assert isinstance(restored.payload, mod.Note)
+
+
+def test_shadowing_message_still_usable(generate):
+    """The user's own `Any` message works as a normal model too."""
+    mod = generate("shadowing.proto")
+    env = mod.Env(payload=mod.Any(x="v"))
+    restored = mod.Env.from_proto_bytes(env.to_proto_bytes())
+    assert isinstance(restored.payload, mod.Any)
+    assert restored.payload.x == "v"

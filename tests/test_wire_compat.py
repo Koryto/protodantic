@@ -35,3 +35,11 @@ def test_backward_compat_older_bytes_parse(mod):
     assert v2.id == "e-3"
     assert v2.source == ""
     assert v2.priority == 0
+
+
+def test_from_proto_rejects_unrelated_message_type(mod):
+    """from_proto guards on the proto full name: an unrelated message with
+    overlapping field names raises TypeError instead of silently converting."""
+    ghost = mod.Ghost(id="sneaky").to_proto()
+    with pytest.raises(TypeError, match="test.wire.Ghost"):
+        mod.EventV1.from_proto(ghost)

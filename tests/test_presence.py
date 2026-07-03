@@ -84,6 +84,16 @@ def test_oneof_exclusion_enforced_on_assignment(mod):
         carrier.number = 42
 
 
+def test_rejected_assignment_leaves_model_unchanged(mod):
+    """Assignment is atomic: when validation rejects a mutation, the model
+    keeps its previous state instead of holding the invalid value."""
+    carrier = mod.Carrier(text="hi")
+    with pytest.raises(ValidationError):
+        carrier.number = 42
+    assert carrier.number is None
+    assert carrier == mod.Carrier(text="hi")
+
+
 def test_assignment_validation_is_configurable(mod):
     """Default is validate-on-assignment, but users opt out with standard
     pydantic config on a subclass."""

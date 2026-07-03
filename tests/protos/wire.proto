@@ -12,3 +12,8 @@ message EventV2 {
   string source = 2;
   int32 priority = 3;
 }
+
+// Unrelated type whose fields overlap EventV1's — must NOT convert into it.
+message Ghost {
+  string id = 1;
+}

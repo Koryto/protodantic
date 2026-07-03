@@ -38,6 +38,8 @@ class _NullType:
 NULL = _NullType()
 
 
+# positional arg by contract: pydantic's PlainSerializer invokes this callback
+# as f(value), so the signature is fixed by the framework
 def _strip_null_sentinel(value: Any) -> Any:
     if value is NULL:
         return None
