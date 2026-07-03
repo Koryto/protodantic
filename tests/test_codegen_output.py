@@ -78,8 +78,7 @@ def test_enum_member_escape_collision_fails_loudly(tmp_path):
     with pytest.raises(ValueError) as exc_info:
         generate_source(fdset)
     message = str(exc_info.value)
-    assert "def" in message
-    assert "def_" in message
+    assert "def and def_ both map to 'def_'" in message
 
 
 def test_proto_without_package_generates(generate, tmp_path):

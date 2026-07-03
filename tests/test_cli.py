@@ -21,9 +21,31 @@ def test_cli_generates_module(tmp_path):
 
 def test_cli_include_path(tmp_path):
     """-I resolves imports living outside the proto's own directory."""
+    schema_dir = tmp_path / "schemas"
+    include_dir = tmp_path / "includes"
+    schema_dir.mkdir()
+    include_dir.mkdir()
+    (include_dir / "common.proto").write_text(
+        'syntax = "proto3";\npackage test.shared;\n'
+        "message Money { int64 units = 1; }\n",
+        encoding="utf-8",
+    )
+    orders_proto = schema_dir / "orders.proto"
+    orders_proto.write_text(
+        'syntax = "proto3";\npackage test.orders;\nimport "common.proto";\n'
+        "message Order { test.shared.Money total = 1; }\n",
+        encoding="utf-8",
+    )
     out = tmp_path / "orders.py"
+
+    without_include = CliRunner().invoke(
+        main, ["generate", str(orders_proto), "-o", str(out)]
+    )
+    assert without_include.exit_code == 1
+    assert not out.exists()
+
     result = CliRunner().invoke(
-        main, ["generate", str(PROTO_DIR / "orders.proto"), "-I", str(PROTO_DIR), "-o", str(out)]
+        main, ["generate", str(orders_proto), "-I", str(include_dir), "-o", str(out)]
     )
     assert result.exit_code == 0
     text = out.read_text(encoding="utf-8")

@@ -92,6 +92,8 @@ def test_rejected_assignment_leaves_model_unchanged(mod):
         carrier.number = 42
     assert carrier.number is None
     assert carrier == mod.Carrier(text="hi")
+    assert carrier.model_fields_set == {"text"}
+    assert carrier.model_dump(exclude_unset=True) == {"text": "hi"}
 
 
 def test_assignment_validation_is_configurable(mod):
