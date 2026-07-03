@@ -239,12 +239,32 @@ class _ModuleGenerator:
         return f"_POOL = _pd.load_pool(_base64.b64decode(\n{chunks}\n))\n"
 
     def _render_enum(self, *, desc: EnumDescriptor) -> str:
-        lines = [f"class {self._py_names[desc.full_name]}(_pd.OpenEnum):"]
-        lines.extend(
-            f"    {_python_enum_member(name=value.name)} = {value.number}"
-            for value in desc.values
-        )
+        py_name = self._py_names[desc.full_name]
+        members = [(_python_enum_member(name=v.name), v.name, v.number) for v in desc.values]
+        self._reject_member_collisions(enum_name=desc.full_name, members=members)
+        lines = [f"class {py_name}(_pd.OpenEnum):"]
+        lines.extend(f"    {member} = {number}" for member, _, number in members)
         return "\n".join(lines) + "\n"
+
+    def _reject_member_collisions(
+        self, *, enum_name: str, members: list[tuple[str, str, int]]
+    ) -> None:
+        # escaping can map two proto member names to one python name; python
+        # enums forbid redeclaring a name (even for same-value aliases), so
+        # refuse rather than crash opaquely at import
+        by_member: dict[str, list[str]] = {}
+        for py_member, proto_member, _ in members:
+            by_member.setdefault(py_member, []).append(proto_member)
+        collisions = {py: names for py, names in by_member.items() if len(names) > 1}
+        if collisions:
+            details = "; ".join(
+                f"{' and '.join(names)} both map to {py!r}"
+                for py, names in sorted(collisions.items())
+            )
+            raise ValueError(
+                f"enum {enum_name!r}: member name collision after escaping: {details}. "
+                "Rename one of the conflicting members."
+            )
 
     def _render_message(self, *, desc: Descriptor) -> str:
         lines = [

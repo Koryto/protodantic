@@ -65,6 +65,23 @@ def test_flatten_collision_fails_loudly(tmp_path):
     assert "test.flat.Outer_Inner" in message
 
 
+def test_enum_member_escape_collision_fails_loudly(tmp_path):
+    """Two enum members that escape to the same python name (only reachable via
+    allow_alias, e.g. `def` and `def_`) must fail with an error naming both,
+    never crash at import with an opaque enum TypeError."""
+    proto = tmp_path / "enumcoll.proto"
+    proto.write_text(
+        'syntax = "proto3";\npackage test.enumcoll;\n'
+        "enum E {\n  option allow_alias = true;\n  def = 0;\n  def_ = 0;\n}\n"
+    )
+    fdset = compile_fdset([str(proto)])
+    with pytest.raises(ValueError) as exc_info:
+        generate_source(fdset)
+    message = str(exc_info.value)
+    assert "def" in message
+    assert "def_" in message
+
+
 def test_proto_without_package_generates(generate, tmp_path):
     """Files with no package declaration are handled."""
     proto = tmp_path / "nopkg.proto"
