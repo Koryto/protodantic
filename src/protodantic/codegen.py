@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import keyword
 import textwrap
 from collections import Counter
 from typing import NamedTuple
@@ -69,6 +70,27 @@ import protodantic as _pd
 '''
 
 _B64_LINE_WIDTH = 84
+
+# names a generated type may not use: builtins that appear in generated
+# annotations/defaults, and the names the generated module itself emits
+_REFERENCED_BUILTINS = frozenset({"bool", "bytes", "dict", "float", "int", "list", "str", "tuple"})
+_EMITTED_MODULE_NAMES = frozenset({"_pd", "_typing", "_datetime", "_base64", "_Field", "_POOL", "_model"})
+# names the enum machinery reserves on members
+_RESERVED_ENUM_MEMBERS = frozenset({"mro"})
+
+
+def _python_type_name(*, name: str) -> str:
+    """Trailing-underscore escape (same rule as fields) for type names that
+    are python keywords or would shadow names the generated module relies on."""
+    if keyword.iskeyword(name) or name in _REFERENCED_BUILTINS or name in _EMITTED_MODULE_NAMES:
+        return name + "_"
+    return name
+
+
+def _python_enum_member(*, name: str) -> str:
+    if keyword.iskeyword(name) or name in _RESERVED_ENUM_MEMBERS:
+        return name + "_"
+    return name
 
 
 class _Entry(NamedTuple):
@@ -156,7 +178,7 @@ class _ModuleGenerator:
                 name = f"{entry.package.replace('.', '_')}_{entry.base_name}"
             else:
                 name = entry.base_name
-            self._py_names[entry.desc.full_name] = name
+            self._py_names[entry.desc.full_name] = _python_type_name(name=name)
         self._reject_residual_collisions()
 
     def _reject_residual_collisions(self) -> None:
@@ -218,7 +240,10 @@ class _ModuleGenerator:
 
     def _render_enum(self, *, desc: EnumDescriptor) -> str:
         lines = [f"class {self._py_names[desc.full_name]}(_pd.OpenEnum):"]
-        lines.extend(f"    {value.name} = {value.number}" for value in desc.values)
+        lines.extend(
+            f"    {_python_enum_member(name=value.name)} = {value.number}"
+            for value in desc.values
+        )
         return "\n".join(lines) + "\n"
 
     def _render_message(self, *, desc: Descriptor) -> str:

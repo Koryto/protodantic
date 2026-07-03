@@ -92,7 +92,7 @@ source = generate_source(compile_fdset(["demo.proto"]))
 | `google.protobuf.Struct` / `Value` / `ListValue` | `dict[str, Any]` / `Any` / `list[Any]` |
 | `google.protobuf.Any` | `typing.Any` — accepts any `ProtoModel`; packed/unpacked via the model registry |
 
-Field names that collide with python keywords or pydantic internals (`class`, `from`, `model_config`, ...) get a trailing underscore (`class_`) with the proto name kept as a populate alias. Same-named messages in different packages get package-qualified class names; every model is also reachable via `protodantic.model_for("pkg.Message")`.
+Field names that collide with python keywords or pydantic internals (`class`, `from`, `model_config`, ...) get a trailing underscore (`class_`) with the proto name kept as a populate alias. The same rule applies to message/enum type names and enum members that are python keywords or would shadow generated code (`message list` → `class list_`) — the proto full name stays the source of truth. Same-named messages in different packages get package-qualified class names; every model is also reachable via `protodantic.model_for("pkg.Message")`.
 
 Semantics worth knowing:
 

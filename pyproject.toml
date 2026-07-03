@@ -33,6 +33,7 @@ dependencies = [
 [project.urls]
 Repository = "https://github.com/Koryto/protodantic"
 Issues = "https://github.com/Koryto/protodantic/issues"
+Changelog = "https://github.com/Koryto/protodantic/blob/master/CHANGELOG.md"
 
 [project.scripts]
 protodantic = "protodantic.cli:main"

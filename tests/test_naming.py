@@ -41,6 +41,41 @@ def test_pydantic_reserved_name_field(mod):
     assert restored.model_config_ == "value"
 
 
+def test_keyword_and_builtin_type_names(generate):
+    """Type names that are python keywords or generated-code builtins get the
+    trailing-underscore treatment (`message list` -> `list_`) and the module
+    still works — builtin annotations and factories stay unshadowed."""
+    mod = generate("hostile_names.proto")
+    holder = mod.Holder(
+        c=mod.class_(x="a"),
+        l=mod.list_(item="b"),
+        d=mod.dict_(k="c"),
+        mode=mod.global_.def_,
+        tags=["t1", "t2"],
+        counts={"k": 1},
+    )
+    restored = mod.Holder.from_proto_bytes(holder.to_proto_bytes())
+    assert restored == holder
+    assert restored.tags == ["t1", "t2"]
+    assert restored.counts == {"k": 1}
+
+
+def test_hostile_type_names_keep_proto_truth(generate):
+    """Renamed classes still resolve by their true proto full names."""
+    from protodantic import model_for
+
+    mod = generate("hostile_names.proto")
+    assert model_for("test.hostile.class") is mod.class_
+    assert model_for("test.hostile.list") is mod.list_
+
+
+def test_keyword_enum_members(generate):
+    """Enum members that are python keywords get the same underscore rule."""
+    mod = generate("hostile_names.proto")
+    assert mod.global_.def_ == 1
+    assert mod.global_.return_ == 2
+
+
 def test_message_named_any_does_not_shadow_typing(generate):
     """A user message named `Any` must not hijack the typing.Any annotation of
     real google.protobuf.Any fields — generated imports are shadow-proof."""
