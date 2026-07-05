@@ -3,6 +3,7 @@
 [![CI](https://github.com/Koryto/protodantic/actions/workflows/ci.yml/badge.svg)](https://github.com/Koryto/protodantic/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/protodantic-py)](https://pypi.org/project/protodantic-py/)
 [![Python](https://img.shields.io/pypi/pyversions/protodantic-py)](https://pypi.org/project/protodantic-py/)
+[![Pydantic v2](https://img.shields.io/badge/Pydantic-v2-E92063?logo=pydantic&logoColor=white)](https://docs.pydantic.dev/latest/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Bidirectional bridge between **Protocol Buffers** and **Pydantic**.
@@ -48,6 +49,19 @@ Generate models:
 ```sh
 protodantic generate demo.proto -o models.py
 ```
+
+Or point it at a whole directory of protos to get a python package tree mirroring your proto files (one module per file, single shared descriptor pool, relocatable):
+
+```sh
+protodantic generate ./protos -o generated/
+# generated/myorg/billing.py, generated/myorg/common.py, ...
+```
+
+```python
+from generated.myorg.billing import Invoice
+```
+
+Layout follows the input shape (files → single module, directory → package tree); override with `--layout module|tree`. Regenerating into an existing tree is managed-clean: stale modules from deleted protos are removed, and any file protodantic didn't generate aborts the run untouched.
 
 Then:
 
@@ -119,8 +133,9 @@ If several imported generated modules define the same proto type, the registry b
 
 Requires Python ≥ 3.11. proto3 only by design (proto2 input is rejected with a clear error). The full supported-behavior spec lives in [tests/](tests/) — every test documents one use case. Documented policies: unknown fields are dropped when a model re-serializes (the model is the source of truth), and naive datetimes are interpreted as UTC.
 
-- **0.1.0 (current)** — greenfield: `.proto` → pydantic codegen with lossless bidirectional round-trips, plus the semantics future drops build on.
-- **0.2.0 — brownfield** — reverse schema codegen (pydantic models → `.proto`), generating from installed `_pb2` packages by descriptor reflection, `to_proto(into=TheirPb2Class)`.
+- **0.1.x (current)** — greenfield: `.proto` files *and directories* → pydantic codegen (single module or package tree) with lossless bidirectional round-trips, plus the semantics future drops build on.
+- **0.1.2 — greenfield closeout** — generation from installed `_pb2` packages by descriptor reflection (no `.proto` sources needed), plus `to_proto(into=TheirPb2Class)`.
+- **0.2.x — brownfield** — reverse schema codegen: pydantic models → `.proto`.
 - **0.3.0 — performance** — benchmark suite (vs `json.loads`+pydantic, raw `_pb2`, betterproto), then cached field plans and trusted-construction fast paths.
 
 gRPC service stubs are out of scope: protodantic is a message layer.

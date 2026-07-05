@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package myorg;
+
+import "myorg/common.proto";
+
+// same proto package, different file -> cross-file reference within a package
+message Invoice {
+  string id = 1;
+  Money total = 2;
+  repeated Money lines = 3;
+}
