@@ -130,6 +130,26 @@ def test_shadowed_wkt_with_diverging_labels_fails_loudly(tmp_path):
         generate_tree(fdset)
 
 
+def test_shadowed_wkt_with_custom_json_name_fails_loudly(tmp_path):
+    """An explicit json_name override is schema metadata, not a cosmetic
+    default emitted by protoc, so a modified vendored WKT is rejected."""
+    wkt_root = importlib.resources.files("grpc_tools") / "_proto"
+    shipped = (wkt_root / "google" / "protobuf" / "timestamp.proto").read_text()
+    modified = shipped.replace(
+        "int64 seconds = 1;",
+        'int64 seconds = 1 [json_name = "customSeconds"];',
+    )
+    assert modified != shipped
+    nested = tmp_path / "google" / "protobuf"
+    nested.mkdir(parents=True)
+    (nested / "timestamp.proto").write_text(modified)
+    fdset = compile_fdset([str(tmp_path)])
+    with pytest.raises(ValueError, match="google/protobuf/timestamp.proto"):
+        generate_source(fdset)
+    with pytest.raises(ValueError, match="google/protobuf/timestamp.proto"):
+        generate_tree(fdset)
+
+
 def test_vendored_identical_wkt_is_accepted(tmp_path):
     """Orgs vendor the google WKT protos to pin versions: an identical
     vendored copy passes validation and stays runtime-handled."""

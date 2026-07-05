@@ -212,19 +212,7 @@ def _normalized_descriptor_bytes(*, file_proto: descriptor_pb2.FileDescriptorPro
     normalized = descriptor_pb2.FileDescriptorProto()
     normalized.CopyFrom(file_proto)
     normalized.ClearField("source_code_info")
-    for field in normalized.extension:
-        field.ClearField("json_name")
-    _clear_json_names(message_types=normalized.message_type)
     return normalized.SerializeToString(deterministic=True)
-
-
-def _clear_json_names(*, message_types) -> None:
-    for message in message_types:
-        for field in message.field:
-            field.ClearField("json_name")
-        for field in message.extension:
-            field.ClearField("json_name")
-        _clear_json_names(message_types=message.nested_type)
 
 
 def _reject_non_proto3(*, fdset: descriptor_pb2.FileDescriptorSet) -> None:
