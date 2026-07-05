@@ -1,7 +1,7 @@
-"""USE CASES: interop with classic protoc-generated _pb2 modules. Brownfield
-orgs consume centralized proto packages as _pb2 code; protodantic models built
-from the same schema must accept those instances directly and produce bytes
-those classes parse.
+"""USE CASES: interop with classic protoc-generated _pb2 modules. Orgs that
+consume centralized proto packages as _pb2 code get direct instance acceptance
+(`from_proto`), typed handoff (`to_proto(into=...)`), and byte compatibility —
+protodantic models and _pb2 classes are two views of the same schema.
 """
 
 import importlib.resources
@@ -35,7 +35,7 @@ def pb2(tmp_path_factory):
     assert protoc.main(args) == 0
     sys.path.insert(0, str(out_dir))
     try:
-        import demo_pb2
+        demo_pb2 = importlib.import_module("demo_pb2")
     finally:
         sys.path.remove(str(out_dir))
     yield demo_pb2
@@ -112,20 +112,31 @@ def test_to_proto_into_requires_a_message_class(mod, pb2):
     """Instances and non-message classes are rejected with a clear TypeError
     up front — never a confusing downstream crash."""
     with pytest.raises(TypeError, match="message class"):
-        mod.User(id=1).to_proto(into=pb2.User())  # an instance, not the class
+        mod.User(id=1).to_proto(into=pb2.User())
     with pytest.raises(TypeError, match="message class"):
-        mod.User(id=1).to_proto(into=dict)  # not a protobuf class at all
+        mod.User(id=1).to_proto(into=dict)
     with pytest.raises(TypeError, match="message class"):
-        mod.User(id=1).to_proto(into=object)  # no DESCRIPTOR to leak on
+        mod.User(id=1).to_proto(into=object)
 
     with pytest.raises(TypeError, match="message class"):
-        mod.User(id=1).to_proto(into=Message)  # abstract base: DESCRIPTOR is None
+        mod.User(id=1).to_proto(into=Message)
 
     class HollowMessage(Message):
         pass
 
     with pytest.raises(TypeError, match="message class"):
-        mod.User(id=1).to_proto(into=HollowMessage)  # subclass without a descriptor
+        mod.User(id=1).to_proto(into=HollowMessage)
+
+    class _ExplodingDescriptorMeta(type):
+        @property
+        def DESCRIPTOR(cls):
+            raise RuntimeError("must not be read before type validation")
+
+    class Hostile(metaclass=_ExplodingDescriptorMeta):
+        pass
+
+    with pytest.raises(TypeError, match="message class"):
+        mod.User(id=1).to_proto(into=Hostile)
 
 
 def test_to_proto_into_tolerates_compatible_version_skew(tmp_path):

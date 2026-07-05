@@ -18,8 +18,10 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from google.protobuf import descriptor_pb2
+
 import protodantic
-from protodantic import compile_fdset
+from protodantic import compile_fdset, model_for
 from protodantic.cli import main
 
 TREE_DIR = Path(__file__).parent / "protos" / "tree"
@@ -132,8 +134,6 @@ def test_descriptors_blob_stored_once(genpkg):
 
 
 def test_model_for_resolves_tree_types(genpkg):
-    from protodantic import model_for
-
     billing = importlib.import_module("genpkg.myorg.billing")
     events = importlib.import_module("genpkg.myorg.analytics.events")
     assert model_for("myorg.Invoice") is billing.Invoice
@@ -165,8 +165,6 @@ def test_tree_is_relocatable(genpkg, tmp_path):
 
 def test_compile_fdset_accepts_directories():
     """A directory argument discovers **/*.proto with the dir as import root."""
-    from google.protobuf import descriptor_pb2
-
     fdset = compile_fdset([str(TREE_DIR)])
     names = {f.name for f in descriptor_pb2.FileDescriptorSet.FromString(fdset).file}
     assert {
@@ -377,8 +375,6 @@ def test_directory_input_with_ancestor_include():
     """A user -I pointing at an ANCESTOR of the input directory must not change
     canonicalization: files resolve relative to the input dir (no duplicate
     compilation under two names)."""
-    from google.protobuf import descriptor_pb2
-
     fdset = compile_fdset([str(TREE_DIR)], includes=[str(PROTO_DIR)])
     names = {f.name for f in descriptor_pb2.FileDescriptorSet.FromString(fdset).file}
     assert "myorg/common.proto" in names

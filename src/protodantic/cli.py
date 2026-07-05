@@ -9,9 +9,9 @@ from pathlib import Path
 import click
 
 from ._version import __version__
-from .codegen import GENERATED_MARKER, generate_source, generate_tree
+from .codegen import _GENERATED_MARKER, generate_source, generate_tree
 from .compiler import compile_fdset
-from .reflection import PB2_MODULE_GLOB, fdset_from_package
+from .reflection import _PB2_MODULE_GLOB, fdset_from_package
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -119,7 +119,7 @@ def _reject_non_proto_inputs(*, protos: tuple[str, ...]) -> None:
         if (
             entry_path.is_dir()
             and not any(entry_path.rglob("*.proto"))
-            and any(entry_path.rglob(PB2_MODULE_GLOB))
+            and any(entry_path.rglob(_PB2_MODULE_GLOB))
         ):
             raise click.ClickException(
                 f"{entry} contains compiled _pb2 modules but no .proto sources; "
@@ -189,7 +189,7 @@ def _foreign_files(*, out_dir: Path) -> list[str]:
             continue
         with path.open(encoding="utf-8", errors="replace") as handle:
             first_line = handle.readline()
-        if GENERATED_MARKER not in first_line:
+        if _GENERATED_MARKER not in first_line:
             foreign.append(rel)
     return foreign
 

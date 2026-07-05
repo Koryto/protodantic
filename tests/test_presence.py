@@ -3,7 +3,7 @@ wire", never conflated with a zero default — and oneofs are mutually exclusive
 """
 
 import pytest
-from pydantic import ValidationError
+from pydantic import ConfigDict, ValidationError
 
 
 @pytest.fixture(scope="module")
@@ -99,7 +99,6 @@ def test_rejected_assignment_leaves_model_unchanged(mod):
 def test_assignment_validation_is_configurable(mod):
     """Default is validate-on-assignment, but users opt out with standard
     pydantic config on a subclass."""
-    from pydantic import ConfigDict
 
     class Relaxed(mod.Carrier):
         model_config = ConfigDict(validate_assignment=False)

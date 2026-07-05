@@ -5,6 +5,8 @@ underscore and the original name stays usable as an alias and on the wire.
 
 import pytest
 
+from protodantic import model_for
+
 
 @pytest.fixture(scope="module")
 def mod(generate):
@@ -62,8 +64,6 @@ def test_keyword_and_builtin_type_names(generate):
 
 def test_hostile_type_names_keep_proto_truth(generate):
     """Renamed classes still resolve by their true proto full names."""
-    from protodantic import model_for
-
     mod = generate("hostile_names.proto")
     assert model_for("test.hostile.class") is mod.class_
     assert model_for("test.hostile.list") is mod.list_

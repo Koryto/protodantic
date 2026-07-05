@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from protodantic import compile_fdset, generate_source
+from protodantic import __version__, compile_fdset, generate_source
 
 PROTO_DIR = Path(__file__).parent / "protos"
 
@@ -40,8 +40,6 @@ def test_generated_code_has_no_codegen_dependencies(fdset):
 def test_generated_code_is_marked_with_version(fdset):
     """Output carries the DO NOT EDIT marker and the protodantic version that
     produced it (future compat checks against committed generated code)."""
-    from protodantic import __version__
-
     source = generate_source(fdset)
     assert "DO NOT EDIT" in source
     assert f"protodantic {__version__}" in source

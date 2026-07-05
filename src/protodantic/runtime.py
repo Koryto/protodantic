@@ -301,18 +301,17 @@ class ProtoModel(BaseModel):
     def to_proto(self, *, into: type[Message] | None = None) -> Message:
         """Convert this model to a protobuf message. ``into`` accepts a message
         class of the same proto full name (e.g. a classic _pb2 class) and
-        returns an instance of it; schema-version skew between the model and
-        the target class follows wire-compat semantics (newer fields survive
-        as protobuf unknown fields)."""
+        returns an instance of it."""
         if into is not None:
-            # abstract Message and descriptor-less subclasses pass issubclass
-            # but carry DESCRIPTOR = None — require a real message Descriptor
+            # type checks BEFORE touching DESCRIPTOR: hostile attributes must
+            # not leak arbitrary exceptions past the promised TypeError
+            if not (isinstance(into, type) and issubclass(into, Message)):
+                raise TypeError(
+                    f"to_proto(into=...) expects a protobuf message class, got {into!r}"
+                )
+            # abstract Message subclasses pass issubclass but carry DESCRIPTOR = None
             descriptor = getattr(into, "DESCRIPTOR", None)
-            if not (
-                isinstance(into, type)
-                and issubclass(into, Message)
-                and isinstance(descriptor, Descriptor)
-            ):
+            if not isinstance(descriptor, Descriptor):
                 raise TypeError(
                     f"to_proto(into=...) expects a protobuf message class, got {into!r}"
                 )

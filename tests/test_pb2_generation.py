@@ -180,8 +180,7 @@ def test_reflection_supports_namespace_packages(tmp_path):
 
 def test_reflection_supports_nested_namespace_packages(tmp_path):
     """PEP 420 all the way down: _pb2 modules nested in namespace SUBdirs
-    (no __init__.py at any level) are discovered — pkgutil-style walking
-    cannot see these."""
+    (no __init__.py at any level) are discovered."""
     proto_root = tmp_path / "protosrc"
     (proto_root / "acme" / "contracts").mkdir(parents=True)
     (proto_root / "acme" / "contracts" / "foo.proto").write_text(
@@ -204,6 +203,22 @@ def test_reflection_supports_nested_namespace_packages(tmp_path):
     finally:
         sys.path.remove(str(site))
         _purge_modules(prefix="acme", baseline=modules_before)
+
+
+def test_reflection_rejects_pb2_module_without_descriptor(tmp_path):
+    """A module matching the *_pb2 naming contract but exposing no protobuf
+    FileDescriptor is a loud error naming the module — never a silently
+    smaller fdset."""
+    site = _build_pb2_site(tmp_path=tmp_path, package="brokenpkg", with_init=True)
+    (site / "brokenpkg" / "broken_pb2.py").write_text("DESCRIPTOR = None\n")
+    modules_before = set(sys.modules)
+    sys.path.insert(0, str(site))
+    try:
+        with pytest.raises(ValueError, match="broken_pb2"):
+            protodantic.fdset_from_package("brokenpkg")
+    finally:
+        sys.path.remove(str(site))
+        _purge_modules(prefix="brokenpkg", baseline=modules_before)
 
 
 def test_reflection_fails_loudly_on_broken_subpackage(tmp_path):
@@ -268,9 +283,9 @@ def test_cli_preflight_oserror_fails_cleanly(tmp_path, monkeypatch):
 
 
 def test_layout_follows_descriptor_names_not_python_layout(tmp_path):
-    """The proof the myorg fixture can't give (its python layout coincides
-    with its proto paths): _pb2 modules buried under an unrelated python
-    container still generate at their DESCRIPTOR-recorded proto paths."""
+    """_pb2 modules buried under an unrelated python container still generate
+    at their DESCRIPTOR-recorded proto paths — the package's python layout
+    never determines the generated layout."""
     proto_root = tmp_path / "protosrc"
     (proto_root / "wire").mkdir(parents=True)
     (proto_root / "wire" / "format.proto").write_text(

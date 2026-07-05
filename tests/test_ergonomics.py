@@ -2,6 +2,7 @@
 JSON schema, and proto-JSON all work.
 """
 
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -59,8 +60,6 @@ def test_proto_json_uses_canonical_names(mod):
 def test_from_proto_json_kwargs_passthrough(mod):
     """json_format options are exposed both ways — e.g. lenient ingestion of
     JSON containing fields from a newer schema revision."""
-    import json
-
     payload = json.loads(full_user(mod).to_proto_json())
     payload["fieldFromTheFuture"] = 123
     restored = mod.User.from_proto_json(json.dumps(payload), ignore_unknown_fields=True)
