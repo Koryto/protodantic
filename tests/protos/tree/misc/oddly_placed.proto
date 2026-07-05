@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+// file path (misc/) deliberately does NOT match the proto package —
+// module paths must derive from file paths, never from packages
+package myorg.oddstuff;
+
+message Oddity {
+  string note = 1;
+}
