@@ -300,6 +300,9 @@ def test_hostile_paths_sanitized(tmp_path):
     (root / "v1.2.proto").write_text(
         'syntax = "proto3";\npackage h6;\nmessage Rel { string v = 1; }\n'
     )
+    (root / "__pycache__.proto").write_text(
+        'syntax = "proto3";\npackage h7;\nmessage Cache { string v = 1; }\n'
+    )
     out_root = tmp_path / "site"
     out = out_root / "hostilegen"
     result = CliRunner().invoke(main, ["generate", str(root), "-o", str(out)])
@@ -310,6 +313,7 @@ def test_hostile_paths_sanitized(tmp_path):
     assert (out / "__init___.py").exists()
     assert (out / "_2fa" / "one_time.py").exists()
     assert (out / "v1_2.py").exists()
+    assert (out / "__pycache___.py").exists()
 
     sys.path.insert(0, str(out_root))
     try:
@@ -367,6 +371,114 @@ def test_regeneration_removes_stale_modules(tmp_path):
     assert CliRunner().invoke(main, ["generate", str(root), "-o", str(out)]).exit_code == 0
     assert (out / "a.py").exists()
     assert not (out / "b.py").exists()
+
+
+def test_directory_input_with_ancestor_include():
+    """A user -I pointing at an ANCESTOR of the input directory must not change
+    canonicalization: files resolve relative to the input dir (no duplicate
+    compilation under two names)."""
+    from google.protobuf import descriptor_pb2
+
+    fdset = compile_fdset([str(TREE_DIR)], includes=[str(PROTO_DIR)])
+    names = {f.name for f in descriptor_pb2.FileDescriptorSet.FromString(fdset).file}
+    assert "myorg/common.proto" in names
+    assert not any(n.startswith("tree/") for n in names)
+
+
+def test_dependency_aliases_are_injective(tmp_path):
+    """Distinct dependency module paths must never share an import alias:
+    a/b--c.proto and a--b/c.proto both sanitize with double underscores and
+    naive joining would collide."""
+    root = tmp_path / "protos"
+    (root / "a").mkdir(parents=True)
+    (root / "a" / "b--c.proto").write_text(
+        'syntax = "proto3";\npackage d1;\nmessage M1 { string v = 1; }\n'
+    )
+    (root / "a--b").mkdir()
+    (root / "a--b" / "c.proto").write_text(
+        'syntax = "proto3";\npackage d2;\nmessage M2 { string v = 1; }\n'
+    )
+    (root / "consumer.proto").write_text(
+        'syntax = "proto3";\npackage dc;\n'
+        'import "a/b--c.proto";\nimport "a--b/c.proto";\n'
+        "message Uses { d1.M1 one = 1; d2.M2 two = 2; }\n"
+    )
+    out_root = tmp_path / "site"
+    result = CliRunner().invoke(main, ["generate", str(root), "-o", str(out_root / "aliasgen")])
+    assert result.exit_code == 0, result.output
+
+    sys.path.insert(0, str(out_root))
+    try:
+        consumer = importlib.import_module("aliasgen.consumer")
+        m1 = importlib.import_module("aliasgen.a.b__c")
+        m2 = importlib.import_module("aliasgen.a__b.c")
+        uses = consumer.Uses(one=m1.M1(v="x"), two=m2.M2(v="y"))
+        assert consumer.Uses.from_proto_bytes(uses.to_proto_bytes()) == uses
+    finally:
+        sys.path.remove(str(out_root))
+
+
+def test_sanitized_directory_merge_fails_loudly(tmp_path):
+    """Two distinct source directories normalizing to the same python package
+    (foo-bar/ and foo_bar/) are a collision, not a silent merge."""
+    root = tmp_path / "protos"
+    (root / "foo-bar").mkdir(parents=True)
+    (root / "foo-bar" / "a.proto").write_text(
+        'syntax = "proto3";\npackage s1;\nmessage A { string v = 1; }\n'
+    )
+    (root / "foo_bar").mkdir()
+    (root / "foo_bar" / "b.proto").write_text(
+        'syntax = "proto3";\npackage s2;\nmessage B { string v = 1; }\n'
+    )
+    result = CliRunner().invoke(main, ["generate", str(root), "-o", str(tmp_path / "out")])
+    assert result.exit_code == 1
+    combined = (result.output + result.stderr).lower()
+    assert "collision" in combined
+    assert "foo-bar" in combined
+    assert "foo_bar" in combined
+
+
+def test_foreign_detection_under_pycache_ancestor(tmp_path):
+    """Foreign-file detection must judge paths relative to the output dir — an
+    ancestor directory named __pycache__ must not blind it into deleting
+    handwritten files."""
+    root = tmp_path / "protos"
+    root.mkdir()
+    (root / "a.proto").write_text('syntax = "proto3";\npackage pa;\nmessage A { string v = 1; }\n')
+    out = tmp_path / "__pycache__" / "gen"  # hostile ancestor name
+    assert CliRunner().invoke(main, ["generate", str(root), "-o", str(out)]).exit_code == 0
+
+    foreign = out / "handwritten.py"
+    foreign.write_text("SECRET = 1\n")
+    result = CliRunner().invoke(main, ["generate", str(root), "-o", str(out)])
+    assert result.exit_code == 1
+    assert "handwritten.py" in (result.output + result.stderr)
+    assert foreign.read_text() == "SECRET = 1\n"
+
+
+def test_failed_regeneration_preserves_previous_tree(tmp_path, monkeypatch):
+    """Regeneration is failure-atomic: if writing the replacement fails
+    mid-way (disk full, permissions), the previous valid tree survives
+    byte-identical."""
+    root = tmp_path / "protos"
+    root.mkdir()
+    (root / "a.proto").write_text('syntax = "proto3";\npackage fa;\nmessage A { string v = 1; }\n')
+    (root / "b.proto").write_text('syntax = "proto3";\npackage fb;\nmessage B { string v = 1; }\n')
+    out = tmp_path / "gen"
+    assert CliRunner().invoke(main, ["generate", str(root), "-o", str(out)]).exit_code == 0
+    snapshot = {p.relative_to(out).as_posix(): p.read_bytes() for p in out.rglob("*.py")}
+
+    def disk_full(self, *args, **kwargs):
+        raise OSError("disk full (simulated)")
+
+    monkeypatch.setattr(Path, "write_text", disk_full)
+    result = CliRunner().invoke(main, ["generate", str(root), "-o", str(out)])
+    monkeypatch.undo()
+    assert result.exit_code == 1
+    after = {p.relative_to(out).as_posix(): p.read_bytes() for p in out.rglob("*.py")}
+    assert after == snapshot
+    leftovers = [p.name for p in out.parent.iterdir() if "protodantic" in p.name.lower()]
+    assert leftovers == []
 
 
 def test_regeneration_tolerates_pycache(tmp_path):

@@ -90,8 +90,8 @@ _EMITTED_MODULE_NAMES = frozenset(
 _RESERVED_ENUM_MEMBERS = frozenset({"mro"})
 
 _IDENTIFIER_CHARS = frozenset(string.ascii_letters + string.digits + "_")
-# module stems reserved for protodantic's own emitted files
-_RESERVED_STEMS = frozenset({"__init__", "_descriptors"})
+# module stems reserved for protodantic's own emitted files / python tooling
+_RESERVED_STEMS = frozenset({"__init__", "_descriptors", "__pycache__"})
 
 
 class _Entry(NamedTuple):
@@ -155,7 +155,10 @@ def _sanitize_path_segment(*, segment: str) -> str:
 
 
 def _dep_alias(*, segments: tuple[str, ...]) -> str:
-    return "_dep_" + "__".join(segments)
+    # length-prefixed segments make the encoding injective: plain joining
+    # would collide for e.g. ("a", "b__c") vs ("a__b", "c"); segments never
+    # start with a digit, so the length prefix is unambiguous
+    return "_dep_" + "_".join(f"{len(segment)}{segment}" for segment in segments)
 
 
 def _reject_non_proto3(*, fdset: descriptor_pb2.FileDescriptorSet) -> None:
@@ -462,10 +465,12 @@ class _TreeGenerator:
 
 def _assign_module_paths(*, file_names: list[str]) -> dict[str, tuple[str, ...]]:
     result: dict[str, tuple[str, ...]] = {}
+    raw_segments: dict[str, tuple[str, ...]] = {}
     owners: dict[tuple[str, ...], str] = {}
     for name in sorted(file_names):
         stem = name[: -len(".proto")] if name.endswith(".proto") else name
-        segments = tuple(_sanitize_path_segment(segment=s) for s in stem.split("/"))
+        raw = tuple(stem.split("/"))
+        segments = tuple(_sanitize_path_segment(segment=s) for s in raw)
         if segments in owners:
             raise ValueError(
                 f"module path collision: {owners[segments]!r} and {name!r} both map to "
@@ -473,6 +478,22 @@ def _assign_module_paths(*, file_names: list[str]) -> dict[str, tuple[str, ...]]
             )
         owners[segments] = name
         result[name] = segments
+        raw_segments[name] = raw
+
+    # two distinct SOURCE directories normalizing to one python package is a
+    # collision (silent merges would lie about the proto layout)
+    dir_sources: dict[tuple[str, ...], str] = {}
+    for name in sorted(result):
+        segments, raw = result[name], raw_segments[name]
+        for depth in range(1, len(segments)):
+            key = segments[:depth]
+            original = "/".join(raw[:depth])
+            existing = dir_sources.setdefault(key, original)
+            if existing != original:
+                raise ValueError(
+                    f"module path collision: source directories {existing!r} and {original!r} "
+                    f"both normalize to python package {'/'.join(key)}/. Rename one of the directories."
+                )
 
     dir_owners: dict[tuple[str, ...], str] = {}
     for name, segments in result.items():
