@@ -66,3 +66,36 @@ def test_pb2_roundtrip_through_model(mod, pb2):
     original = pb2.User(id=3, name="bo", nickname="b")
     reparsed = pb2.User.FromString(mod.User.from_proto(original).to_proto_bytes())
     assert reparsed == original
+
+
+def test_to_proto_into_pb2_class(mod, pb2):
+    """to_proto(into=TheirPb2Class) returns an instance of THEIR class — the
+    grpc-call-site handoff without manual FromString plumbing."""
+    from datetime import datetime, timezone
+
+    user = mod.User(
+        id=5,
+        name="into",
+        created_at=datetime(2026, 7, 5, tzinfo=timezone.utc),
+        email="e@x.io",
+    )
+    msg = user.to_proto(into=pb2.User)
+    assert isinstance(msg, pb2.User)
+    assert msg.id == 5
+    assert msg.name == "into"
+    assert msg.created_at.ToDatetime(tzinfo=timezone.utc) == user.created_at
+    assert msg.WhichOneof("contact") == "email"
+
+
+def test_to_proto_into_wrong_class_raises(mod, pb2):
+    """A mismatched target class is a TypeError naming both proto types."""
+    import pytest as _pytest
+
+    with _pytest.raises(TypeError, match="demo.Address"):
+        mod.User(id=1).to_proto(into=pb2.Address)
+
+
+def test_to_proto_into_roundtrip(mod, pb2):
+    """model -> into-pb2 instance -> from_proto recovers the model exactly."""
+    user = mod.User(id=9, name="loop", color=mod.Color.GREEN, tags=["a"])
+    assert mod.User.from_proto(user.to_proto(into=pb2.User)) == user
