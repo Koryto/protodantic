@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package myorg.analytics;
+
+import "google/protobuf/timestamp.proto";
+import "myorg/common.proto";
+
+// cross-package reference + well-known type
+message PurchaseEvent {
+  google.protobuf.Timestamp at = 1;
+  myorg.Money amount = 2;
+}
