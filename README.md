@@ -3,6 +3,7 @@
 [![CI](https://github.com/Koryto/protodantic/actions/workflows/ci.yml/badge.svg)](https://github.com/Koryto/protodantic/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/protodantic-py)](https://pypi.org/project/protodantic-py/)
 [![Python](https://img.shields.io/pypi/pyversions/protodantic-py)](https://pypi.org/project/protodantic-py/)
+[![Pydantic v2](https://img.shields.io/badge/Pydantic-v2-E92063?logo=pydantic&logoColor=white)](https://docs.pydantic.dev/latest/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Bidirectional bridge between **Protocol Buffers** and **Pydantic**.

@@ -14,7 +14,7 @@ src/protodantic/
   _version.py   single version source (hatch + generated-code stamps read it)
 ```
 
-The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` bytes and nothing else. Future input sources (installed `_pb2` packages via descriptor reflection, planned for 0.2) must produce those bytes and feed the same codegen. Do not add codegen inputs that bypass it.
+The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` bytes and nothing else. Future schema inputs (installed `_pb2` packages via descriptor reflection, planned for 0.1.2) must produce those bytes and feed the same codegen. Do not add codegen inputs that bypass it.
 
 ## Philosophy (non-negotiable)
 
@@ -46,7 +46,7 @@ The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` 
 ## Workflow
 
 - uv-managed: `uv sync`, then `uv run pytest tests/ -q`.
-- Python floor is 3.11. When touching `runtime.py`/`codegen.py`, run both: `uv run pytest tests/` and `uv run --python 3.11 --isolated pytest tests/`. CI runs ubuntu+windows × 3.11/3.12/3.13; all six must be green.
+- Python floor is 3.11. When touching `runtime.py`/`codegen.py`, run both: `uv run pytest tests/` and `uv run --python 3.11 --isolated pytest tests/`. CI runs ubuntu+windows × 3.11/3.12/3.13/3.14; all eight must be green.
 - Releases happen on merge to `master`: the workflow publishes to PyPI iff `_version.py` holds a version not yet published. A releasing PR bumps `_version.py` **and** moves `CHANGELOG.md` `[Unreleased]` entries under the new version heading, atomically.
 - Update `CHANGELOG.md` `[Unreleased]` for any user-facing change (Keep a Changelog format).
 - Never commit generated artifacts, secrets, or machine-local paths. Test protos live in `tests/protos/`; temporary schemas belong in `tmp_path`.
