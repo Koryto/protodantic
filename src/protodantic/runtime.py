@@ -16,7 +16,7 @@ from google.protobuf import (
     timestamp_pb2,
     wrappers_pb2,
 )
-from google.protobuf.descriptor import FieldDescriptor
+from google.protobuf.descriptor import Descriptor, FieldDescriptor
 from google.protobuf.message import Message
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -305,11 +305,18 @@ class ProtoModel(BaseModel):
         the target class follows wire-compat semantics (newer fields survive
         as protobuf unknown fields)."""
         if into is not None:
-            if not (isinstance(into, type) and issubclass(into, Message)):
+            # abstract Message and descriptor-less subclasses pass issubclass
+            # but carry DESCRIPTOR = None — require a real message Descriptor
+            descriptor = getattr(into, "DESCRIPTOR", None)
+            if not (
+                isinstance(into, type)
+                and issubclass(into, Message)
+                and isinstance(descriptor, Descriptor)
+            ):
                 raise TypeError(
                     f"to_proto(into=...) expects a protobuf message class, got {into!r}"
                 )
-            target_name = into.DESCRIPTOR.full_name
+            target_name = descriptor.full_name
             if target_name != self.__proto_full_name__:
                 raise TypeError(
                     f"{type(self).__name__}.to_proto(into=...) expects a class for "

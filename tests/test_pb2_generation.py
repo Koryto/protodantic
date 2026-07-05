@@ -246,6 +246,22 @@ def test_cli_pb2_directory_input_redirects_to_from_package(tmp_path):
     assert "--from-package" in (result.output + result.stderr)
 
 
+def test_cli_preflight_oserror_fails_cleanly(tmp_path, monkeypatch):
+    """Filesystem errors during input preflight (e.g. permission denied while
+    scanning a directory) surface as clean CLI errors, never tracebacks."""
+    root = tmp_path / "protos"
+    root.mkdir()
+    (root / "a.proto").write_text('syntax = "proto3";\npackage pf;\nmessage A { string v = 1; }\n')
+
+    def denied(self, pattern):
+        raise PermissionError("denied by test")
+
+    monkeypatch.setattr(Path, "rglob", denied)
+    result = CliRunner().invoke(main, ["generate", str(root), "-o", str(tmp_path / "out")])
+    assert result.exit_code == 1
+    assert "denied by test" in (result.output + result.stderr)
+
+
 def test_layout_follows_descriptor_names_not_python_layout(tmp_path):
     """The proof the myorg fixture can't give (its python layout coincides
     with its proto paths): _pb2 modules buried under an unrelated python

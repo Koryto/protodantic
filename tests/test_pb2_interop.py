@@ -116,6 +116,17 @@ def test_to_proto_into_requires_a_message_class(mod, pb2):
     with pytest.raises(TypeError, match="message class"):
         mod.User(id=1).to_proto(into=object)  # no DESCRIPTOR to leak on
 
+    from google.protobuf.message import Message
+
+    with pytest.raises(TypeError, match="message class"):
+        mod.User(id=1).to_proto(into=Message)  # abstract base: DESCRIPTOR is None
+
+    class HollowMessage(Message):
+        pass
+
+    with pytest.raises(TypeError, match="message class"):
+        mod.User(id=1).to_proto(into=HollowMessage)  # subclass without a descriptor
+
 
 def test_to_proto_into_tolerates_compatible_version_skew(tmp_path):
     """POLICY: into= requires a matching proto full name only; schema-version

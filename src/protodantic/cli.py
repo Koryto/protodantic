@@ -63,23 +63,6 @@ def generate(
             "-I/--include applies to .proto compilation and cannot be combined "
             "with --from-package (an installed package needs no import paths)"
         )
-    for entry in protos:
-        if entry.endswith(".py"):
-            raise click.ClickException(
-                f"{entry} is a python module, not a .proto file; for compiled "
-                "protobuf packages use --from-package with the package's import name"
-            )
-        entry_path = Path(entry)
-        if (
-            entry_path.is_dir()
-            and not any(entry_path.rglob("*.proto"))
-            and any(entry_path.rglob("*_pb2.py"))
-        ):
-            raise click.ClickException(
-                f"{entry} contains compiled _pb2 modules but no .proto sources; "
-                "use --from-package with the package's import name"
-            )
-
     if layout:
         resolved_layout = layout
     elif from_package or any(Path(p).is_dir() for p in protos):
@@ -109,6 +92,7 @@ def generate(
         if from_package:
             fdset = fdset_from_package(from_package)
         else:
+            _reject_non_proto_inputs(protos=protos)
             fdset = compile_fdset(protos=protos, includes=includes)
         if resolved_layout == "module":
             source = generate_source(fdset_bytes=fdset)
@@ -122,6 +106,27 @@ def generate(
             click.echo(f"wrote {len(files)} files under {out}")
     except (RuntimeError, NotImplementedError, ValueError, OSError, ImportError) as exc:
         raise click.ClickException(str(exc)) from exc
+
+
+def _reject_non_proto_inputs(*, protos: tuple[str, ...]) -> None:
+    """Redirect compiled-protobuf inputs to --from-package. Runs inside the
+    command's exception boundary so filesystem errors surface cleanly."""
+    for entry in protos:
+        if entry.endswith(".py"):
+            raise click.ClickException(
+                f"{entry} is a python module, not a .proto file; for compiled "
+                "protobuf packages use --from-package with the package's import name"
+            )
+        entry_path = Path(entry)
+        if (
+            entry_path.is_dir()
+            and not any(entry_path.rglob("*.proto"))
+            and any(entry_path.rglob("*_pb2.py"))
+        ):
+            raise click.ClickException(
+                f"{entry} contains compiled _pb2 modules but no .proto sources; "
+                "use --from-package with the package's import name"
+            )
 
 
 def _write_tree(*, out_dir: Path, files: dict[str, str]) -> None:
