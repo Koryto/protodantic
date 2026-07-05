@@ -104,3 +104,39 @@ def test_to_proto_into_roundtrip(mod, pb2):
     """model -> into-pb2 instance -> from_proto recovers the model exactly."""
     user = mod.User(id=9, name="loop", color=mod.Color.GREEN, tags=["a"])
     assert mod.User.from_proto(user.to_proto(into=pb2.User)) == user
+
+
+def test_to_proto_into_tolerates_compatible_version_skew(tmp_path):
+    """POLICY: into= requires a matching proto full name only; schema-version
+    skew follows wire-compat semantics. A newer model handed to an older
+    target class keeps the newer fields as protobuf unknown fields — nothing
+    is silently lost in transit."""
+    import importlib.util
+
+    from google.protobuf import message_factory
+
+    from protodantic import compile_fdset, generate_source, load_pool
+
+    v1 = tmp_path / "v1.proto"
+    v1.write_text('syntax = "proto3";\npackage skew;\nmessage Event { string id = 1; }\n')
+    v2 = tmp_path / "v2.proto"
+    v2.write_text(
+        'syntax = "proto3";\npackage skew;\nmessage Event { string id = 1; int32 priority = 2; }\n'
+    )
+
+    module_path = tmp_path / "skew_v2_models.py"
+    module_path.write_text(generate_source(compile_fdset([str(v2)])), encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("skew_v2_models", module_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["skew_v2_models"] = module
+    spec.loader.exec_module(module)
+
+    old_pool = load_pool(compile_fdset([str(v1)]))
+    old_cls = message_factory.GetMessageClass(old_pool.FindMessageTypeByName("skew.Event"))
+
+    event = module.Event(id="e-1", priority=9)
+    older_msg = event.to_proto(into=old_cls)  # same full name, older schema
+    assert older_msg.id == "e-1"
+    # the newer field survives the older class as an unknown field
+    recovered = module.Event.from_proto_bytes(older_msg.SerializeToString())
+    assert recovered.priority == 9

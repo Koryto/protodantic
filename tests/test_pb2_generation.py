@@ -1,4 +1,4 @@
-"""USE CASES: 0.1.2 greenfield closeout — generating models from an installed
+﻿"""USE CASES: 0.1.2 greenfield closeout — generating models from an installed
 _pb2 package by descriptor reflection. The _pb2 package is a proxy form of the
 .proto files: reflection produces FileDescriptorSet bytes that feed the SAME
 codegen seam, so its output is provably equivalent to compiling the sources.
@@ -24,7 +24,9 @@ TREE_DIR = Path(__file__).parent / "protos" / "tree"
 MYORG_PROTOS = sorted(str(p) for p in (TREE_DIR / "myorg").rglob("*.proto"))
 
 
-def _purge_modules(prefix: str) -> None:
+def _purge_modules(*, prefix: str) -> None:
+    # fixture packages have tmp-unique names, so prefix-purge removes exactly
+    # the modules the fixture introduced
     for name in [m for m in sys.modules if m == prefix or m.startswith(prefix + ".")]:
         del sys.modules[name]
 
@@ -42,7 +44,7 @@ def myorg_pb2(tmp_path_factory):
     sys.path.insert(0, str(site))
     yield "myorg"
     sys.path.remove(str(site))
-    _purge_modules("myorg")
+    _purge_modules(prefix="myorg")
 
 
 # -- fdset_from_package API ---------------------------------------------------
@@ -81,11 +83,14 @@ def test_reflection_equals_source_compilation(myorg_pb2):
     are identical to those from compiling the .proto sources."""
     via_reflection = protodantic.generate_tree(protodantic.fdset_from_package(myorg_pb2))
     via_protoc = protodantic.generate_tree(compile_fdset(MYORG_PROTOS, [str(TREE_DIR)]))
-    strip = lambda tree: {k: v for k, v in tree.items() if k != "_descriptors.py"}  # noqa: E731
-    assert strip(via_reflection) == strip(via_protoc)
+    reflection_modules = {k: v for k, v in via_reflection.items() if k != "_descriptors.py"}
+    protoc_modules = {k: v for k, v in via_protoc.items() if k != "_descriptors.py"}
+    assert reflection_modules == protoc_modules
 
 
 def test_fdset_from_package_missing_package_raises(myorg_pb2):
+    """A package that isn't installed surfaces as ModuleNotFoundError — the
+    honest python error, not a swallowed empty result."""
     with pytest.raises(ModuleNotFoundError):
         protodantic.fdset_from_package("definitely_not_installed_xyz")
 
@@ -101,7 +106,7 @@ def test_fdset_from_package_without_descriptors_raises(tmp_path):
             protodantic.fdset_from_package("emptypkg")
     finally:
         sys.path.remove(str(tmp_path))
-        _purge_modules("emptypkg")
+        _purge_modules(prefix="emptypkg")
 
 
 def _build_pb2_site(*, tmp_path: Path, package: str, with_init: bool) -> Path:
@@ -119,6 +124,11 @@ def _build_pb2_site(*, tmp_path: Path, package: str, with_init: bool) -> Path:
             str(proto_root / package / "mini.proto")]
     assert protoc.main(args) == 0
     (site / package / "evil_helper.py").write_text("raise RuntimeError('must not be imported')\n")
+    # the realistic adjacent hazard: grpc stubs live NEXT to _pb2 modules and
+    # need grpcio at import — a sloppy '_pb2 in name' match would import them
+    (site / package / "mini_pb2_grpc.py").write_text(
+        "raise RuntimeError('grpc stub must not be imported')\n"
+    )
     if with_init:
         (site / package / "__init__.py").write_text("")
     return site
@@ -136,7 +146,7 @@ def test_reflection_imports_only_pb2_modules(tmp_path):
         assert "sidefx/mini.proto" in names
     finally:
         sys.path.remove(str(site))
-        _purge_modules("sidefx")
+        _purge_modules(prefix="sidefx")
 
 
 def test_reflection_supports_namespace_packages(tmp_path):
@@ -150,7 +160,42 @@ def test_reflection_supports_namespace_packages(tmp_path):
         assert "sidens/mini.proto" in names
     finally:
         sys.path.remove(str(site))
-        _purge_modules("sidens")
+        _purge_modules(prefix="sidens")
+
+
+def test_layout_follows_descriptor_names_not_python_layout(tmp_path):
+    """The proof the myorg fixture can't give (its python layout coincides
+    with its proto paths): _pb2 modules buried under an unrelated python
+    container still generate at their DESCRIPTOR-recorded proto paths."""
+    import shutil
+
+    proto_root = tmp_path / "protosrc"
+    (proto_root / "wire").mkdir(parents=True)
+    (proto_root / "wire" / "format.proto").write_text(
+        'syntax = "proto3";\npackage wf;\nmessage Frame { string v = 1; }\n'
+    )
+    build = tmp_path / "build"
+    build.mkdir()
+    assert protoc.main(
+        ["protoc", f"-I{proto_root}", f"--python_out={build}", str(proto_root / "wire" / "format.proto")]
+    ) == 0
+
+    # bury the compiled module two container levels deep — python layout
+    # (orgbundle.inner.wire) deliberately disagrees with proto path (wire/)
+    site = tmp_path / "site"
+    container = site / "orgbundle" / "inner"
+    shutil.copytree(build / "wire", container / "wire")
+    for directory in (site / "orgbundle", container, container / "wire"):
+        (directory / "__init__.py").write_text("")
+
+    sys.path.insert(0, str(site))
+    try:
+        tree = protodantic.generate_tree(protodantic.fdset_from_package("orgbundle"))
+        assert "wire/format.py" in tree
+        assert not any("orgbundle" in path or "inner" in path for path in tree)
+    finally:
+        sys.path.remove(str(site))
+        _purge_modules(prefix="orgbundle")
 
 
 # -- CLI ----------------------------------------------------------------------
@@ -177,6 +222,7 @@ def test_cli_from_package_generates_tree(myorg_pb2, tmp_path):
         assert billing.Invoice.from_proto_bytes(invoice.to_proto_bytes()) == invoice
     finally:
         sys.path.remove(str(out_root))
+        _purge_modules(prefix="reflected")
 
 
 def test_cli_from_package_module_layout(myorg_pb2, tmp_path):
@@ -215,11 +261,18 @@ def test_cli_from_package_rejects_includes(myorg_pb2, tmp_path):
 
 
 def test_cli_requires_some_input(tmp_path):
+    """No positional protos and no --from-package is a specific contract
+    error naming both input forms — not a generic usage message."""
     result = CliRunner().invoke(main, ["generate", "-o", str(tmp_path / "x.py")])
-    assert result.exit_code != 0
+    assert result.exit_code == 1
+    combined = result.output + result.stderr
+    assert ".proto" in combined
+    assert "--from-package" in combined
 
 
 def test_cli_from_package_unknown_package_fails_cleanly(tmp_path):
+    """A typo'd package name exits 1 with the name in the message — no
+    traceback."""
     result = CliRunner().invoke(
         main, ["generate", "--from-package", "definitely_not_installed_xyz", "-o", str(tmp_path / "x")]
     )
