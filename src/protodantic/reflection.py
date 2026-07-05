@@ -31,7 +31,9 @@ def fdset_from_package(package: str) -> bytes:
     fdset = descriptor_pb2.FileDescriptorSet()
     for file_descriptor in _canonical_order(files=files):
         file_descriptor.CopyToProto(fdset.file.add())
-    return fdset.SerializeToString()
+    # no map fields exist in FileDescriptorSet today; pin determinism
+    # structurally rather than by accident of schema shape
+    return fdset.SerializeToString(deterministic=True)
 
 
 def _iter_pb2_module_names(*, package: ModuleType) -> list[str]:

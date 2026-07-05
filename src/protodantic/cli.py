@@ -9,7 +9,7 @@ from pathlib import Path
 import click
 
 from ._version import __version__
-from .codegen import _GENERATED_MARKER, generate_source, generate_tree
+from .codegen import _is_generated_header, generate_source, generate_tree
 from .compiler import compile_fdset
 from .reflection import _PB2_MODULE_GLOB, fdset_from_package
 
@@ -179,17 +179,21 @@ def _foreign_files(*, out_dir: Path) -> list[str]:
         if path.is_dir():
             continue
         rel_parts = path.relative_to(out_dir).parts
-        # bytecode caches are byproducts of our own generated modules; judge
-        # relative to out_dir so a __pycache__ ANCESTOR can't blind the scan
-        if "__pycache__" in rel_parts:
-            continue
         rel = "/".join(rel_parts)
+        # bytecode is a byproduct of our own generated modules — but ONLY
+        # bytecode; anything else stashed under __pycache__ is foreign data.
+        # Judged relative to out_dir so a __pycache__ ancestor can't blind us.
+        if "__pycache__" in rel_parts:
+            if path.suffix in {".pyc", ".pyo"}:
+                continue
+            foreign.append(rel)
+            continue
         if path.suffix != ".py":
             foreign.append(rel)
             continue
         with path.open(encoding="utf-8", errors="replace") as handle:
             first_line = handle.readline()
-        if _GENERATED_MARKER not in first_line:
+        if not _is_generated_header(line=first_line):
             foreign.append(rel)
     return foreign
 

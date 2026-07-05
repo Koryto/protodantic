@@ -3,11 +3,12 @@
 generated-file marking.
 """
 
+import importlib.resources
 from pathlib import Path
 
 import pytest
 
-from protodantic import __version__, compile_fdset, generate_source
+from protodantic import __version__, compile_fdset, generate_source, generate_tree
 
 PROTO_DIR = Path(__file__).parent / "protos"
 
@@ -23,6 +24,7 @@ def test_generation_is_deterministic(fdset):
 
 
 def test_compile_is_deterministic():
+    """Repeated protoc compilation produces generation-equivalent fdsets."""
     a = compile_fdset([str(PROTO_DIR / "demo.proto")], [str(PROTO_DIR)])
     b = compile_fdset([str(PROTO_DIR / "demo.proto")], [str(PROTO_DIR)])
     assert generate_source(a) == generate_source(b)
@@ -77,6 +79,72 @@ def test_enum_member_escape_collision_fails_loudly(tmp_path):
         generate_source(fdset)
     message = str(exc_info.value)
     assert "def and def_ both map to 'def_'" in message
+
+
+def test_user_protos_under_google_namespace_generate(tmp_path):
+    """Only the runtime-handled well-known files are withheld from generation;
+    a user proto that happens to live under google/protobuf/ still produces
+    models — never silently vanishes. Both layouts."""
+    nested = tmp_path / "google" / "protobuf"
+    nested.mkdir(parents=True)
+    (nested / "company.proto").write_text(
+        'syntax = "proto3";\npackage gp;\nmessage Company { string name = 1; }\n'
+    )
+    fdset = compile_fdset([str(tmp_path)])
+    assert "class Company(_pd.ProtoModel)" in generate_source(fdset)
+    assert "google/protobuf/company.py" in generate_tree(fdset)
+
+
+def test_shadowed_wkt_file_with_diverging_content_fails_loudly(tmp_path):
+    """A file reusing a reserved runtime-handled name (google/protobuf/
+    timestamp.proto) with content that diverges from the shipped descriptor
+    fails loudly in both layouts — its types would otherwise be silently
+    replaced by runtime equivalents that no longer match the schema."""
+    nested = tmp_path / "google" / "protobuf"
+    nested.mkdir(parents=True)
+    (nested / "timestamp.proto").write_text(
+        'syntax = "proto3";\npackage google.protobuf;\n'
+        "message Timestamp { string totally_not_seconds = 1; }\n"
+    )
+    fdset = compile_fdset([str(tmp_path)])
+    with pytest.raises(ValueError, match="google/protobuf/timestamp.proto"):
+        generate_source(fdset)
+    with pytest.raises(ValueError, match="google/protobuf/timestamp.proto"):
+        generate_tree(fdset)
+
+
+def test_shadowed_wkt_with_diverging_labels_fails_loudly(tmp_path):
+    """Divergence detection covers ALL wire-significant structure, not just
+    names/numbers/types: a shadow with the right fields but a repeated label
+    is still a different schema and must be refused."""
+    nested = tmp_path / "google" / "protobuf"
+    nested.mkdir(parents=True)
+    (nested / "timestamp.proto").write_text(
+        'syntax = "proto3";\npackage google.protobuf;\n'
+        "message Timestamp { repeated int64 seconds = 1; int32 nanos = 2; }\n"
+    )
+    fdset = compile_fdset([str(tmp_path)])
+    with pytest.raises(ValueError, match="google/protobuf/timestamp.proto"):
+        generate_source(fdset)
+    with pytest.raises(ValueError, match="google/protobuf/timestamp.proto"):
+        generate_tree(fdset)
+
+
+def test_vendored_identical_wkt_is_accepted(tmp_path):
+    """Orgs vendor the google WKT protos to pin versions: an identical
+    vendored copy passes validation and stays runtime-handled."""
+    wkt_root = importlib.resources.files("grpc_tools") / "_proto"
+    shipped = (wkt_root / "google" / "protobuf" / "timestamp.proto").read_text()
+    nested = tmp_path / "google" / "protobuf"
+    nested.mkdir(parents=True)
+    (nested / "timestamp.proto").write_text(shipped)
+    (tmp_path / "uses.proto").write_text(
+        'syntax = "proto3";\npackage v;\nimport "google/protobuf/timestamp.proto";\n'
+        "message Evt { google.protobuf.Timestamp at = 1; }\n"
+    )
+    source = generate_source(compile_fdset([str(tmp_path)]))
+    assert "class Evt(_pd.ProtoModel)" in source
+    assert "_datetime.datetime" in source
 
 
 def test_proto_without_package_generates(generate, tmp_path):

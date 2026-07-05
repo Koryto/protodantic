@@ -20,6 +20,20 @@ from protodantic import compile_fdset, generate_source, load_pool
 PROTO_DIR = Path(__file__).parent / "protos"
 
 
+class _HollowMessage(Message):
+    pass
+
+
+class _ExplodingDescriptorMeta(type):
+    @property
+    def DESCRIPTOR(cls):
+        raise RuntimeError("must not be read before type validation")
+
+
+class _HostileMessageTarget(metaclass=_ExplodingDescriptorMeta):
+    pass
+
+
 @pytest.fixture(scope="module")
 def pb2(tmp_path_factory):
     """Classic `protoc --python_out` module for demo.proto."""
@@ -120,23 +134,10 @@ def test_to_proto_into_requires_a_message_class(mod, pb2):
 
     with pytest.raises(TypeError, match="message class"):
         mod.User(id=1).to_proto(into=Message)
-
-    class HollowMessage(Message):
-        pass
-
     with pytest.raises(TypeError, match="message class"):
-        mod.User(id=1).to_proto(into=HollowMessage)
-
-    class _ExplodingDescriptorMeta(type):
-        @property
-        def DESCRIPTOR(cls):
-            raise RuntimeError("must not be read before type validation")
-
-    class Hostile(metaclass=_ExplodingDescriptorMeta):
-        pass
-
+        mod.User(id=1).to_proto(into=_HollowMessage)
     with pytest.raises(TypeError, match="message class"):
-        mod.User(id=1).to_proto(into=Hostile)
+        mod.User(id=1).to_proto(into=_HostileMessageTarget)
 
 
 def test_to_proto_into_tolerates_compatible_version_skew(tmp_path):

@@ -10,6 +10,7 @@ def mod(generate):
 
 
 def test_self_recursive_tree(mod):
+    """A self-recursive message round-trips across multiple levels."""
     tree = mod.TreeNode(
         name="root",
         children=[
@@ -23,6 +24,7 @@ def test_self_recursive_tree(mod):
 
 
 def test_mutually_recursive_messages(mod):
+    """Mutually recursive message types rebuild and round-trip correctly."""
     ping = mod.Ping(tag="1", pong=mod.Pong(tag="2", ping=mod.Ping(tag="3")))
     restored = mod.Ping.from_proto_bytes(ping.to_proto_bytes())
     assert restored == ping

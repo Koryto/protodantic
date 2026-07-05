@@ -26,16 +26,19 @@ def full_user(mod):
 
 
 def test_model_dump(mod):
+    """Generated models support standard nested python-mode dumps."""
     dumped = full_user(mod).model_dump()
     assert dumped["name"] == "kory"
     assert dumped["address"]["city"] == "Warsaw"
 
 
 def test_model_dump_json(mod):
+    """Generated models support standard pydantic JSON dumps."""
     assert '"kory"' in full_user(mod).model_dump_json()
 
 
 def test_model_copy_update(mod):
+    """A standard model_copy update remains protobuf-serializable."""
     user = full_user(mod)
     clone = user.model_copy(update={"name": "ada"})
     assert clone.name == "ada"
@@ -75,6 +78,7 @@ def test_json_name_option_respected(mod):
 
 
 def test_mutation_then_serialize(mod):
+    """In-place list and map mutations are reflected on the wire."""
     user = full_user(mod)
     user.tags.append("y")
     user.counts["k"] = 3

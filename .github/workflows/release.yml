@@ -31,12 +31,12 @@ jobs:
         run: |
           VERSION=$(uv run python -c "from protodantic._version import __version__; print(__version__)")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/protodantic-py/$VERSION/json")
-          if [ "$STATUS" = "404" ]; then
-            echo "unpublished=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "unpublished=false" >> "$GITHUB_OUTPUT"
-          fi
+          STATUS=$(curl --silent --show-error -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/protodantic-py/$VERSION/json")
+          case "$STATUS" in
+            200) echo "unpublished=false" >> "$GITHUB_OUTPUT" ;;
+            404) echo "unpublished=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "unexpected PyPI status: $STATUS" >&2; exit 1 ;;
+          esac
           echo "version=$VERSION pypi_status=$STATUS"
 
       - name: Build distributions

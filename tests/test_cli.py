@@ -13,6 +13,7 @@ PROTO_DIR = Path(__file__).parent / "protos"
 
 
 def test_cli_generates_module(tmp_path):
+    """A proto file generates an importable-model source module."""
     out = tmp_path / "models.py"
     result = CliRunner().invoke(main, ["generate", str(PROTO_DIR / "demo.proto"), "-o", str(out)])
     assert result.exit_code == 0
@@ -54,6 +55,7 @@ def test_cli_include_path(tmp_path):
 
 
 def test_cli_multiple_protos(tmp_path):
+    """Several proto files can be combined into one generated module."""
     out = tmp_path / "combined.py"
     result = CliRunner().invoke(
         main,
@@ -66,6 +68,7 @@ def test_cli_multiple_protos(tmp_path):
 
 
 def test_cli_creates_parent_dirs(tmp_path):
+    """Module output creates missing parent directories."""
     out = tmp_path / "deep" / "nested" / "models.py"
     result = CliRunner().invoke(main, ["generate", str(PROTO_DIR / "common.proto"), "-o", str(out)])
     assert result.exit_code == 0
@@ -73,6 +76,7 @@ def test_cli_creates_parent_dirs(tmp_path):
 
 
 def test_cli_bad_proto_fails_nonzero(tmp_path):
+    """A missing proto exits nonzero without creating output."""
     out = tmp_path / "nope.py"
     result = CliRunner().invoke(
         main, ["generate", str(tmp_path / "does_not_exist.proto"), "-o", str(out)]
@@ -94,6 +98,7 @@ def test_cli_unwritable_output_fails_cleanly(tmp_path):
 
 
 def test_cli_version():
+    """The root CLI exposes the installed protodantic version."""
     result = CliRunner().invoke(main, ["--version"])
     assert result.exit_code == 0
     assert "protodantic" in result.output
