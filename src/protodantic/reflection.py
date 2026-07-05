@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import importlib
-import pkgutil
+from pathlib import Path
 from types import ModuleType
 
 from google.protobuf import descriptor_pb2
@@ -32,12 +32,20 @@ def fdset_from_package(package: str) -> bytes:
 
 
 def _iter_pb2_module_names(*, package: ModuleType) -> list[str]:
-    if not hasattr(package, "__path__"):
-        return []
-    names: list[str] = []
-    for info in pkgutil.walk_packages(package.__path__, prefix=package.__name__ + "."):
-        if info.name.rpartition(".")[2].endswith("_pb2"):
-            names.append(info.name)
+    """Discover *_pb2 module names by filesystem traversal, importing nothing.
+
+    pkgutil-style walking is unusable here: it cannot see nested PEP 420
+    namespace directories, and it imports every subpackage it recurses
+    through. Path traversal descends namespace dirs for free, and the only
+    imports that ever happen are the matched _pb2 modules themselves (whose
+    ancestor packages python imports precisely because they are required —
+    an unrelated trapped subpackage is never touched)."""
+    names: set[str] = set()
+    for root in getattr(package, "__path__", []):
+        root_path = Path(root)
+        for pb2_file in root_path.rglob("*_pb2.py"):
+            relative = pb2_file.relative_to(root_path).with_suffix("")
+            names.add(package.__name__ + "." + ".".join(relative.parts))
     return sorted(names)
 
 

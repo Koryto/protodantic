@@ -69,6 +69,16 @@ def generate(
                 f"{entry} is a python module, not a .proto file; for compiled "
                 "protobuf packages use --from-package with the package's import name"
             )
+        entry_path = Path(entry)
+        if (
+            entry_path.is_dir()
+            and not any(entry_path.rglob("*.proto"))
+            and any(entry_path.rglob("*_pb2.py"))
+        ):
+            raise click.ClickException(
+                f"{entry} contains compiled _pb2 modules but no .proto sources; "
+                "use --from-package with the package's import name"
+            )
 
     if layout:
         resolved_layout = layout

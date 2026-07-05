@@ -106,6 +106,17 @@ def test_to_proto_into_roundtrip(mod, pb2):
     assert mod.User.from_proto(user.to_proto(into=pb2.User)) == user
 
 
+def test_to_proto_into_requires_a_message_class(mod, pb2):
+    """Instances and non-message classes are rejected with a clear TypeError
+    up front — never a confusing downstream crash."""
+    with pytest.raises(TypeError, match="message class"):
+        mod.User(id=1).to_proto(into=pb2.User())  # an instance, not the class
+    with pytest.raises(TypeError, match="message class"):
+        mod.User(id=1).to_proto(into=dict)  # not a protobuf class at all
+    with pytest.raises(TypeError, match="message class"):
+        mod.User(id=1).to_proto(into=object)  # no DESCRIPTOR to leak on
+
+
 def test_to_proto_into_tolerates_compatible_version_skew(tmp_path):
     """POLICY: into= requires a matching proto full name only; schema-version
     skew follows wire-compat semantics. A newer model handed to an older

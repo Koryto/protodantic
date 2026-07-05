@@ -83,9 +83,10 @@ assert restored == user
 Or drive it from Python:
 
 ```python
-from protodantic import compile_fdset, generate_source
+from protodantic import compile_fdset, fdset_from_package, generate_source
 
 source = generate_source(compile_fdset(["demo.proto"]))
+source = generate_source(fdset_from_package("my_org_protos"))  # from installed _pb2
 ```
 
 ## Type mapping
@@ -122,7 +123,7 @@ Already consuming a centralized proto package as protoc-generated `_pb2` modules
 protodantic generate --from-package my_org_protos -o generated/
 ```
 
-Reflection imports only the `*_pb2` modules (helpers and grpc stubs are never touched) and produces output identical to compiling the original `.proto` files. And generated models interoperate with `_pb2` instances directly:
+Reflection imports only the `*_pb2` modules (helpers and grpc stubs are never touched) and generates model sources identical to compiling the original `.proto` files. And generated models interoperate with `_pb2` instances directly:
 
 ```python
 user = User.from_proto(their_pb2_user_instance)   # accepts _pb2 messages

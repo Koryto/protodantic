@@ -133,6 +133,12 @@ def _build_pb2_site(*, tmp_path: Path, package: str, with_init: bool) -> Path:
     (site / package / "mini_pb2_grpc.py").write_text(
         "raise RuntimeError('grpc stub must not be imported')\n"
     )
+    # an unrelated subpackage with a trapped initializer and no _pb2 content:
+    # discovery must never import it (package traversal != package importing)
+    danger = site / package / "danger"
+    danger.mkdir()
+    (danger / "__init__.py").write_text("raise RuntimeError('unrelated subpackage imported')\n")
+    (danger / "config_helper.py").write_text("raise RuntimeError('unrelated module imported')\n")
     if with_init:
         (site / package / "__init__.py").write_text("")
     return site
@@ -167,6 +173,77 @@ def test_reflection_supports_namespace_packages(tmp_path):
     finally:
         sys.path.remove(str(site))
         _purge_modules(prefix="sidens", baseline=modules_before)
+
+
+def test_reflection_supports_nested_namespace_packages(tmp_path):
+    """PEP 420 all the way down: _pb2 modules nested in namespace SUBdirs
+    (no __init__.py at any level) are discovered — pkgutil-style walking
+    cannot see these."""
+    proto_root = tmp_path / "protosrc"
+    (proto_root / "acme" / "contracts").mkdir(parents=True)
+    (proto_root / "acme" / "contracts" / "foo.proto").write_text(
+        'syntax = "proto3";\npackage ac;\nmessage Foo { string v = 1; }\n'
+    )
+    site = tmp_path / "site"
+    site.mkdir()
+    assert protoc.main([
+        "protoc", f"-I{proto_root}", f"--python_out={site}",
+        str(proto_root / "acme" / "contracts" / "foo.proto"),
+    ]) == 0
+    # no __init__.py anywhere — nested namespace package
+
+    modules_before = set(sys.modules)
+    sys.path.insert(0, str(site))
+    try:
+        fdset_bytes = protodantic.fdset_from_package("acme")
+        names = {f.name for f in descriptor_pb2.FileDescriptorSet.FromString(fdset_bytes).file}
+        assert "acme/contracts/foo.proto" in names
+    finally:
+        sys.path.remove(str(site))
+        _purge_modules(prefix="acme", baseline=modules_before)
+
+
+def test_reflection_fails_loudly_on_broken_subpackage(tmp_path):
+    """pkgutil swallows subpackage ImportErrors by default — that would mean a
+    silently INCOMPLETE fdset (models quietly missing). Reflection must
+    propagate the failure instead."""
+    proto_root = tmp_path / "protosrc"
+    (proto_root / "badpkg" / "sub").mkdir(parents=True)
+    (proto_root / "badpkg" / "mini.proto").write_text(
+        'syntax = "proto3";\npackage bp;\nmessage T1 { string v = 1; }\n'
+    )
+    (proto_root / "badpkg" / "sub" / "other.proto").write_text(
+        'syntax = "proto3";\npackage bps;\nmessage T2 { string v = 1; }\n'
+    )
+    site = tmp_path / "site"
+    site.mkdir()
+    assert protoc.main([
+        "protoc", f"-I{proto_root}", f"--python_out={site}",
+        str(proto_root / "badpkg" / "mini.proto"),
+        str(proto_root / "badpkg" / "sub" / "other.proto"),
+    ]) == 0
+    (site / "badpkg" / "__init__.py").write_text("")
+    (site / "badpkg" / "sub" / "__init__.py").write_text("raise ImportError('boom')\n")
+
+    modules_before = set(sys.modules)
+    sys.path.insert(0, str(site))
+    try:
+        with pytest.raises(ImportError, match="boom"):
+            protodantic.fdset_from_package("badpkg")
+    finally:
+        sys.path.remove(str(site))
+        _purge_modules(prefix="badpkg", baseline=modules_before)
+
+
+def test_cli_pb2_directory_input_redirects_to_from_package(tmp_path):
+    """A directory holding compiled _pb2 modules but no .proto sources gets
+    the same helpful redirect as a _pb2.py file input."""
+    pkg = tmp_path / "compiled"
+    pkg.mkdir()
+    (pkg / "models_pb2.py").write_text("# compiled protobuf module")
+    result = CliRunner().invoke(main, ["generate", str(pkg), "-o", str(tmp_path / "out")])
+    assert result.exit_code == 1
+    assert "--from-package" in (result.output + result.stderr)
 
 
 def test_layout_follows_descriptor_names_not_python_layout(tmp_path):

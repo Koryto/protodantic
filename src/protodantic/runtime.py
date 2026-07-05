@@ -305,6 +305,10 @@ class ProtoModel(BaseModel):
         the target class follows wire-compat semantics (newer fields survive
         as protobuf unknown fields)."""
         if into is not None:
+            if not (isinstance(into, type) and issubclass(into, Message)):
+                raise TypeError(
+                    f"to_proto(into=...) expects a protobuf message class, got {into!r}"
+                )
             target_name = into.DESCRIPTOR.full_name
             if target_name != self.__proto_full_name__:
                 raise TypeError(

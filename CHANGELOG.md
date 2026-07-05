@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Generation from installed `_pb2` packages by descriptor reflection: `protodantic generate --from-package my_org_protos -o generated/` and the `fdset_from_package()` API — no `.proto` sources or protoc invocation needed. Only `*_pb2` modules are imported (helper modules and `_pb2_grpc` stubs are never touched), namespace packages are supported, and module paths derive from the descriptor-recorded proto file names, never the package's python layout. Reflection output is generation-identical to compiling the `.proto` sources.
+- Generation from installed `_pb2` packages by descriptor reflection: `protodantic generate --from-package my_org_protos -o generated/` and the `fdset_from_package()` API — no `.proto` sources or protoc invocation needed. Only `*_pb2` modules are imported (helper modules and `_pb2_grpc` stubs are never touched), namespace packages are supported, and module paths derive from the descriptor-recorded proto file names, never the package's python layout. Reflection generates model sources identical to compiling the `.proto` files (the embedded descriptor blob may differ in cosmetic metadata such as default `json_name` entries — semantically equivalent).
 - `to_proto(into=TheirPb2Class)`: convert a model directly into an instance of a classic `_pb2` class (same proto full name required; `TypeError` naming both types otherwise). Schema-version skew follows wire-compat semantics — newer fields survive older target classes as protobuf unknown fields.
 - Clear CLI guardrails: `--from-package` is mutually exclusive with positional protos and `-I`; feeding a `.py` file as a positional input redirects to `--from-package`.
 
