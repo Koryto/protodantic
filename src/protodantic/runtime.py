@@ -298,8 +298,22 @@ class ProtoModel(BaseModel):
         message_cls = cls.proto_class()
         return message_cls()
 
-    def to_proto(self) -> Message:
-        """Convert this model to a protobuf message."""
+    def to_proto(self, *, into: type[Message] | None = None) -> Message:
+        """Convert this model to a protobuf message. ``into`` accepts a message
+        class of the same proto full name (e.g. a classic _pb2 class) and
+        returns an instance of it; schema-version skew between the model and
+        the target class follows wire-compat semantics (newer fields survive
+        as protobuf unknown fields)."""
+        if into is not None:
+            target_name = into.DESCRIPTOR.full_name
+            if target_name != self.__proto_full_name__:
+                raise TypeError(
+                    f"{type(self).__name__}.to_proto(into=...) expects a class for "
+                    f"{self.__proto_full_name__!r}, got {target_name!r}"
+                )
+            target = into()
+            target.ParseFromString(self.to_proto_bytes())
+            return target
         msg = self._new_message()
         for fd in msg.DESCRIPTOR.fields:
             value = getattr(self, python_field_name(proto_name=fd.name))

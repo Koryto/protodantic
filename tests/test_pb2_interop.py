@@ -129,14 +129,17 @@ def test_to_proto_into_tolerates_compatible_version_skew(tmp_path):
     spec = importlib.util.spec_from_file_location("skew_v2_models", module_path)
     module = importlib.util.module_from_spec(spec)
     sys.modules["skew_v2_models"] = module
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
 
-    old_pool = load_pool(compile_fdset([str(v1)]))
-    old_cls = message_factory.GetMessageClass(old_pool.FindMessageTypeByName("skew.Event"))
+        old_pool = load_pool(compile_fdset([str(v1)]))
+        old_cls = message_factory.GetMessageClass(old_pool.FindMessageTypeByName("skew.Event"))
 
-    event = module.Event(id="e-1", priority=9)
-    older_msg = event.to_proto(into=old_cls)  # same full name, older schema
-    assert older_msg.id == "e-1"
-    # the newer field survives the older class as an unknown field
-    recovered = module.Event.from_proto_bytes(older_msg.SerializeToString())
-    assert recovered.priority == 9
+        event = module.Event(id="e-1", priority=9)
+        older_msg = event.to_proto(into=old_cls)  # same full name, older schema
+        assert older_msg.id == "e-1"
+        # the newer field survives the older class as an unknown field
+        recovered = module.Event.from_proto_bytes(older_msg.SerializeToString())
+        assert recovered.priority == 9
+    finally:
+        sys.modules.pop("skew_v2_models", None)

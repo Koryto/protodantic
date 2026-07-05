@@ -116,11 +116,18 @@ Semantics worth knowing:
 
 ## Interop with existing `_pb2` code
 
-Already consuming a centralized proto package as protoc-generated `_pb2` modules? Generated models interoperate directly:
+Already consuming a centralized proto package as protoc-generated `_pb2` modules? Generate models straight from it — no `.proto` sources needed:
+
+```sh
+protodantic generate --from-package my_org_protos -o generated/
+```
+
+Reflection imports only the `*_pb2` modules (helpers and grpc stubs are never touched) and produces output identical to compiling the original `.proto` files. And generated models interoperate with `_pb2` instances directly:
 
 ```python
 user = User.from_proto(their_pb2_user_instance)   # accepts _pb2 messages
-their_msg = their_pb2.User.FromString(user.to_proto_bytes())  # canonical bytes
+their_msg = user.to_proto(into=their_pb2.User)    # returns THEIR class
+raw = their_pb2.User.FromString(user.to_proto_bytes())  # canonical bytes
 ```
 
 ## How it works

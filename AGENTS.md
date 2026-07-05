@@ -7,14 +7,15 @@ Bidirectional bridge between Protocol Buffers and Pydantic. Distribution name `p
 ```
 src/protodantic/
   compiler.py   .proto files/directories -> serialized FileDescriptorSet bytes (protoc via grpcio-tools)
+  reflection.py installed _pb2 packages -> serialized FileDescriptorSet bytes (descriptor reflection)
   codegen.py    fdset bytes -> single module source (generate_source) or package tree (generate_tree)
   runtime.py    ProtoModel base: conversion both ways, registries, OpenEnum, field-name escaping
   types.py      range-validated ints, Struct/Value/ListValue aliases, NULL sentinel
-  cli.py        click group; `generate` subcommand w/ --layout module|tree (future verbs must be additive)
+  cli.py        click group; `generate` w/ --layout module|tree and --from-package (future verbs additive)
   _version.py   single version source (hatch + generated-code stamps read it)
 ```
 
-The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` bytes and nothing else. Future schema inputs (installed `_pb2` packages via descriptor reflection, planned for 0.1.2) must produce those bytes and feed the same codegen. Do not add codegen inputs that bypass it.
+The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` bytes and nothing else. `compiler.py` (protoc) and `reflection.py` (`_pb2` packages) are the two producers; any future schema input must produce those bytes and feed the same codegen. Do not add codegen inputs that bypass it.
 
 ## Philosophy (non-negotiable)
 
@@ -33,6 +34,8 @@ The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` 
 - `_pb2` interop is a public contract: `from_proto()` accepts classic protoc-generated instances; `to_proto_bytes()` output parses into `_pb2` classes.
 - Tree output (`generate_tree` / directory input): one module per proto **file** (paths derive from file paths, never proto packages), a single shared pool in `_descriptors.py`, root-anchored relative imports (trees are relocatable), external `-I` imports emitted into the tree. Layout defaults follow input shape (directory → tree, files → module); `--layout` overrides; layout/`-o` contradictions fail loudly.
 - Tree regeneration is managed-clean: if every file in the output dir carries the generated header (bytecode caches excluded), the dir is replaced wholesale so stale modules die; any foreign file aborts *before* any mutation.
+- Reflection (`fdset_from_package`): imports only `*_pb2` modules (never helpers or `_pb2_grpc` stubs), supports namespace packages, emits files in canonical order (dependencies first, lexicographic within a ready wave), and is generation-identical to compiling the `.proto` sources — that equivalence is a pinned test.
+- `to_proto(into=SomeClass)` requires a matching proto full name (`TypeError` naming both otherwise); schema-version skew follows wire-compat semantics — newer fields survive older target classes as protobuf unknown fields.
 
 ## Code conventions
 

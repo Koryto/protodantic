@@ -1,4 +1,4 @@
-﻿"""USE CASES: 0.1.2 greenfield closeout — generating models from an installed
+"""USE CASES: 0.1.2 greenfield closeout — generating models from an installed
 _pb2 package by descriptor reflection. The _pb2 package is a proxy form of the
 .proto files: reflection produces FileDescriptorSet bytes that feed the SAME
 codegen seam, so its output is provably equivalent to compiling the sources.
@@ -24,10 +24,12 @@ TREE_DIR = Path(__file__).parent / "protos" / "tree"
 MYORG_PROTOS = sorted(str(p) for p in (TREE_DIR / "myorg").rglob("*.proto"))
 
 
-def _purge_modules(*, prefix: str) -> None:
-    # fixture packages have tmp-unique names, so prefix-purge removes exactly
-    # the modules the fixture introduced
-    for name in [m for m in sys.modules if m == prefix or m.startswith(prefix + ".")]:
+def _purge_modules(*, prefix: str, baseline: set[str]) -> None:
+    for name in [
+        module
+        for module in sys.modules
+        if module not in baseline and (module == prefix or module.startswith(prefix + "."))
+    ]:
         del sys.modules[name]
 
 
@@ -41,10 +43,11 @@ def myorg_pb2(tmp_path_factory):
     assert protoc.main(args) == 0
     for directory in [site / "myorg", *(p for p in (site / "myorg").rglob("*") if p.is_dir())]:
         (directory / "__init__.py").write_text("")
+    modules_before = set(sys.modules)
     sys.path.insert(0, str(site))
     yield "myorg"
     sys.path.remove(str(site))
-    _purge_modules(prefix="myorg")
+    _purge_modules(prefix="myorg", baseline=modules_before)
 
 
 # -- fdset_from_package API ---------------------------------------------------
@@ -88,7 +91,7 @@ def test_reflection_equals_source_compilation(myorg_pb2):
     assert reflection_modules == protoc_modules
 
 
-def test_fdset_from_package_missing_package_raises(myorg_pb2):
+def test_fdset_from_package_missing_package_raises():
     """A package that isn't installed surfaces as ModuleNotFoundError — the
     honest python error, not a swallowed empty result."""
     with pytest.raises(ModuleNotFoundError):
@@ -100,13 +103,14 @@ def test_fdset_from_package_without_descriptors_raises(tmp_path):
     pkg = tmp_path / "emptypkg"
     pkg.mkdir()
     (pkg / "__init__.py").write_text("")
+    modules_before = set(sys.modules)
     sys.path.insert(0, str(tmp_path))
     try:
         with pytest.raises(ValueError, match="emptypkg"):
             protodantic.fdset_from_package("emptypkg")
     finally:
         sys.path.remove(str(tmp_path))
-        _purge_modules(prefix="emptypkg")
+        _purge_modules(prefix="emptypkg", baseline=modules_before)
 
 
 def _build_pb2_site(*, tmp_path: Path, package: str, with_init: bool) -> Path:
@@ -139,6 +143,7 @@ def test_reflection_imports_only_pb2_modules(tmp_path):
     grpc stubs needing extra deps): reflection must import only *_pb2 modules
     — the protoc naming contract — never the rest."""
     site = _build_pb2_site(tmp_path=tmp_path, package="sidefx", with_init=True)
+    modules_before = set(sys.modules)
     sys.path.insert(0, str(site))
     try:
         fdset_bytes = protodantic.fdset_from_package("sidefx")
@@ -146,13 +151,14 @@ def test_reflection_imports_only_pb2_modules(tmp_path):
         assert "sidefx/mini.proto" in names
     finally:
         sys.path.remove(str(site))
-        _purge_modules(prefix="sidefx")
+        _purge_modules(prefix="sidefx", baseline=modules_before)
 
 
 def test_reflection_supports_namespace_packages(tmp_path):
     """PEP 420 namespace packages (no __init__.py) — common for enterprise
     proto wheels — are discoverable too."""
     site = _build_pb2_site(tmp_path=tmp_path, package="sidens", with_init=False)
+    modules_before = set(sys.modules)
     sys.path.insert(0, str(site))
     try:
         fdset_bytes = protodantic.fdset_from_package("sidens")
@@ -160,7 +166,7 @@ def test_reflection_supports_namespace_packages(tmp_path):
         assert "sidens/mini.proto" in names
     finally:
         sys.path.remove(str(site))
-        _purge_modules(prefix="sidens")
+        _purge_modules(prefix="sidens", baseline=modules_before)
 
 
 def test_layout_follows_descriptor_names_not_python_layout(tmp_path):
@@ -188,6 +194,7 @@ def test_layout_follows_descriptor_names_not_python_layout(tmp_path):
     for directory in (site / "orgbundle", container, container / "wire"):
         (directory / "__init__.py").write_text("")
 
+    modules_before = set(sys.modules)
     sys.path.insert(0, str(site))
     try:
         tree = protodantic.generate_tree(protodantic.fdset_from_package("orgbundle"))
@@ -195,7 +202,7 @@ def test_layout_follows_descriptor_names_not_python_layout(tmp_path):
         assert not any("orgbundle" in path or "inner" in path for path in tree)
     finally:
         sys.path.remove(str(site))
-        _purge_modules(prefix="orgbundle")
+        _purge_modules(prefix="orgbundle", baseline=modules_before)
 
 
 # -- CLI ----------------------------------------------------------------------
@@ -212,6 +219,7 @@ def test_cli_from_package_generates_tree(myorg_pb2, tmp_path):
     assert (out / "myorg" / "analytics" / "events.py").exists()
     assert not list(out.rglob("*_pb2*"))
 
+    modules_before = set(sys.modules)
     sys.path.insert(0, str(out_root))
     try:
         import importlib
@@ -222,7 +230,7 @@ def test_cli_from_package_generates_tree(myorg_pb2, tmp_path):
         assert billing.Invoice.from_proto_bytes(invoice.to_proto_bytes()) == invoice
     finally:
         sys.path.remove(str(out_root))
-        _purge_modules(prefix="reflected")
+        _purge_modules(prefix="reflected", baseline=modules_before)
 
 
 def test_cli_from_package_module_layout(myorg_pb2, tmp_path):
