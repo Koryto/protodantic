@@ -49,6 +49,19 @@ Generate models:
 protodantic generate demo.proto -o models.py
 ```
 
+Or point it at a whole directory of protos to get a python package tree mirroring your proto files (one module per file, single shared descriptor pool, relocatable):
+
+```sh
+protodantic generate ./protos -o generated/
+# generated/myorg/billing.py, generated/myorg/common.py, ...
+```
+
+```python
+from generated.myorg.billing import Invoice
+```
+
+Layout follows the input shape (files → single module, directory → package tree); override with `--layout module|tree`. Regenerating into an existing tree is managed-clean: stale modules from deleted protos are removed, and any file protodantic didn't generate aborts the run untouched.
+
 Then:
 
 ```python

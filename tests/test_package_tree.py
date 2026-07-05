@@ -276,8 +276,9 @@ def test_external_imports_emitted_into_tree(tmp_path):
 
 
 def test_hostile_paths_sanitized(tmp_path):
-    """Keyword dirs, dashes, and reserved stems sanitize by the same
-    deterministic rules as type names."""
+    """The complete normalization rule, per segment: non-[A-Za-z0-9_] chars
+    become _ (1:1, no collapsing), leading digits gain a _ prefix, keyword
+    segments and reserved stems (__init__, _descriptors) get a trailing _."""
     root = tmp_path / "hostile"
     (root / "class").mkdir(parents=True)
     (root / "class" / "def.proto").write_text(
@@ -289,6 +290,16 @@ def test_hostile_paths_sanitized(tmp_path):
     (root / "_descriptors.proto").write_text(
         'syntax = "proto3";\npackage h3;\nmessage Desc { string v = 1; }\n'
     )
+    (root / "__init__.proto").write_text(
+        'syntax = "proto3";\npackage h4;\nmessage Boot { string v = 1; }\n'
+    )
+    (root / "2fa").mkdir()
+    (root / "2fa" / "one-time.proto").write_text(
+        'syntax = "proto3";\npackage h5;\nmessage Code { string v = 1; }\n'
+    )
+    (root / "v1.2.proto").write_text(
+        'syntax = "proto3";\npackage h6;\nmessage Rel { string v = 1; }\n'
+    )
     out_root = tmp_path / "site"
     out = out_root / "hostilegen"
     result = CliRunner().invoke(main, ["generate", str(root), "-o", str(out)])
@@ -296,26 +307,35 @@ def test_hostile_paths_sanitized(tmp_path):
     assert (out / "class_" / "def_.py").exists()
     assert (out / "foo_bar.py").exists()
     assert (out / "_descriptors_.py").exists()
+    assert (out / "__init___.py").exists()
+    assert (out / "_2fa" / "one_time.py").exists()
+    assert (out / "v1_2.py").exists()
 
     sys.path.insert(0, str(out_root))
     try:
         thing_mod = importlib.import_module("hostilegen.class_.def_")
         thing = thing_mod.Thing(v="x")
         assert thing_mod.Thing.from_proto_bytes(thing.to_proto_bytes()) == thing
+        code_mod = importlib.import_module("hostilegen._2fa.one_time")
+        assert code_mod.Code(v="y").v == "y"
     finally:
         sys.path.remove(str(out_root))
 
 
 def test_path_collisions_fail_loudly(tmp_path):
     """foo.proto next to foo/bar.proto demands module foo.py AND package foo/
-    — refuse with an error naming both; sanitize-induced collisions too."""
+    — refuse with a collision error naming both exact proto paths; same for
+    sanitize-induced collisions."""
     root_a = tmp_path / "coll_a"
     (root_a / "foo").mkdir(parents=True)
     (root_a / "foo.proto").write_text('syntax = "proto3";\npackage ca;\nmessage A { string v = 1; }\n')
     (root_a / "foo" / "bar.proto").write_text('syntax = "proto3";\npackage cb;\nmessage B { string v = 1; }\n')
     result_a = CliRunner().invoke(main, ["generate", str(root_a), "-o", str(tmp_path / "out_a")])
     assert result_a.exit_code == 1
-    assert "foo" in (result_a.output + result_a.stderr).lower()
+    combined_a = (result_a.output + result_a.stderr).lower()
+    assert "collision" in combined_a
+    assert "foo.proto" in combined_a
+    assert "foo/bar.proto" in combined_a
 
     root_b = tmp_path / "coll_b"
     root_b.mkdir()
@@ -323,7 +343,10 @@ def test_path_collisions_fail_loudly(tmp_path):
     (root_b / "foo_bar.proto").write_text('syntax = "proto3";\npackage cd;\nmessage D { string v = 1; }\n')
     result_b = CliRunner().invoke(main, ["generate", str(root_b), "-o", str(tmp_path / "out_b")])
     assert result_b.exit_code == 1
-    assert "foo_bar" in (result_b.output + result_b.stderr).lower()
+    combined_b = (result_b.output + result_b.stderr).lower()
+    assert "collision" in combined_b
+    assert "foo-bar.proto" in combined_b
+    assert "foo_bar.proto" in combined_b
 
 
 # -- policy: managed-clean regeneration ---------------------------------------
@@ -346,18 +369,45 @@ def test_regeneration_removes_stale_modules(tmp_path):
     assert not (out / "b.py").exists()
 
 
-def test_regeneration_refuses_foreign_files(tmp_path):
-    """A file without the protodantic header in the output dir aborts
-    regeneration — we never delete anything we didn't generate."""
+def test_regeneration_tolerates_pycache(tmp_path):
+    """Imported generated packages grow __pycache__; regeneration must treat
+    bytecode as our own byproduct, not as foreign content."""
     root = tmp_path / "protos"
     root.mkdir()
-    (root / "a.proto").write_text('syntax = "proto3";\npackage rf;\nmessage A { string v = 1; }\n')
+    (root / "a.proto").write_text('syntax = "proto3";\npackage rp;\nmessage A { string v = 1; }\n')
+    (root / "b.proto").write_text('syntax = "proto3";\npackage rq;\nmessage B { string v = 1; }\n')
     out = tmp_path / "gen"
     assert CliRunner().invoke(main, ["generate", str(root), "-o", str(out)]).exit_code == 0
 
+    pycache = out / "__pycache__"
+    pycache.mkdir()
+    (pycache / "a.cpython-311.pyc").write_bytes(b"\x00fake-bytecode")
+    (root / "b.proto").unlink()
+    result = CliRunner().invoke(main, ["generate", str(root), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    assert (out / "a.py").exists()
+    assert not (out / "b.py").exists()
+
+
+def test_regeneration_aborts_atomically_on_foreign_files(tmp_path):
+    """Foreign-file detection happens BEFORE any mutation: after a refused
+    regeneration, previously generated modules are byte-identical and the
+    foreign file is untouched."""
+    root = tmp_path / "protos"
+    root.mkdir()
+    proto = root / "a.proto"
+    proto.write_text('syntax = "proto3";\npackage rf;\nmessage A { string v = 1; }\n')
+    out = tmp_path / "gen"
+    assert CliRunner().invoke(main, ["generate", str(root), "-o", str(out)]).exit_code == 0
+    original_bytes = (out / "a.py").read_bytes()
+
+    # schema change means regeneration WOULD rewrite a.py — unless it aborts
+    proto.write_text('syntax = "proto3";\npackage rf;\nmessage A { string v = 1; string w = 2; }\n')
     foreign = out / "handwritten.py"
     foreign.write_text("SECRET = 42\n")
+
     result = CliRunner().invoke(main, ["generate", str(root), "-o", str(out)])
     assert result.exit_code == 1
     assert "handwritten.py" in (result.output + result.stderr)
+    assert (out / "a.py").read_bytes() == original_bytes
     assert foreign.read_text() == "SECRET = 42\n"
