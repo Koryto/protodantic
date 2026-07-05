@@ -185,13 +185,7 @@ def _dep_alias(*, segments: tuple[str, ...]) -> str:
 
 
 def _reject_shadowed_runtime_files(*, fdset: descriptor_pb2.FileDescriptorSet) -> None:
-    """A file reusing a runtime-handled name would have its types silently
-    replaced by runtime equivalents (Timestamp -> datetime, ...), so a copy
-    diverging from the shipped descriptor is refused. The comparison is the
-    COMPLETE descriptor minus a deny-list of known-cosmetic metadata: any
-    unanticipated difference fails loudly and gets normalized consciously,
-    never ignored by omission. Identical vendored copies — and the
-    grpc_tools-bundled sources themselves — pass."""
+    """Reject reserved runtime-handled files that differ from the shipped schema."""
     for file_proto in fdset.file:
         shipped = _RUNTIME_HANDLED_DESCRIPTORS.get(file_proto.name)
         if shipped is None:
@@ -211,6 +205,8 @@ def _reject_shadowed_runtime_files(*, fdset: descriptor_pb2.FileDescriptorSet) -
 def _normalized_descriptor_bytes(*, file_proto: descriptor_pb2.FileDescriptorProto) -> bytes:
     normalized = descriptor_pb2.FileDescriptorProto()
     normalized.CopyFrom(file_proto)
+    # Source locations do not affect schema semantics and may be absent from
+    # reflected descriptors.
     normalized.ClearField("source_code_info")
     return normalized.SerializeToString(deterministic=True)
 

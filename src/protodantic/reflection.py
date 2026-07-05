@@ -37,9 +37,8 @@ def fdset_from_package(package: str) -> bytes:
 
 
 def _iter_pb2_module_names(*, package: ModuleType) -> list[str]:
-    # filesystem traversal instead of pkgutil: descends nested PEP 420
-    # namespace dirs and imports nothing — only matched _pb2 modules are ever
-    # imported (their ancestor packages implicitly, because they are required)
+    # Filesystem traversal includes nested namespace packages without importing
+    # unrelated package initializers.
     names: set[str] = set()
     for root in getattr(package, "__path__", []):
         root_path = Path(root)

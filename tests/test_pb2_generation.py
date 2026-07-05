@@ -1,7 +1,6 @@
-"""USE CASES: 0.1.2 greenfield closeout — generating models from an installed
-_pb2 package by descriptor reflection. The _pb2 package is a proxy form of the
-.proto files: reflection produces FileDescriptorSet bytes that feed the SAME
-codegen seam, so its output is provably equivalent to compiling the sources.
+"""USE CASES: generating models from an installed _pb2 package by descriptor
+reflection. Reflection produces FileDescriptorSet bytes for the standard
+code-generation path.
 CLI: `protodantic generate --from-package NAME -o gen/` (tree layout default,
 module paths derive from the proto file names recorded in the descriptors —
 never from the _pb2 python layout).
@@ -69,9 +68,8 @@ def test_fdset_from_package_collects_all_files(myorg_pb2):
 
 
 def test_fdset_from_package_canonical_order(myorg_pb2):
-    """Byte-identical across calls AND a pinned canonical file order:
-    dependencies before dependents, lexicographic among the independent —
-    process-independent by construction, not by accident of dict ordering."""
+    """Reflection is byte-identical across calls and orders dependencies before
+    dependents, with lexical ordering between independent files."""
     first = protodantic.fdset_from_package(myorg_pb2)
     assert first == protodantic.fdset_from_package(myorg_pb2)
     names = [f.name for f in descriptor_pb2.FileDescriptorSet.FromString(first).file]
@@ -84,8 +82,7 @@ def test_fdset_from_package_canonical_order(myorg_pb2):
 
 
 def test_reflection_equals_source_compilation(myorg_pb2):
-    """THE proxy claim, pinned: per-module generated sources from reflection
-    are identical to those from compiling the .proto sources."""
+    """Reflection and source compilation produce identical model modules."""
     via_reflection = protodantic.generate_tree(protodantic.fdset_from_package(myorg_pb2))
     via_protoc = protodantic.generate_tree(compile_fdset(MYORG_PROTOS, [str(TREE_DIR)]))
     reflection_modules = {k: v for k, v in via_reflection.items() if k != "_descriptors.py"}
@@ -222,9 +219,8 @@ def test_reflection_rejects_pb2_module_without_descriptor(tmp_path):
 
 
 def test_reflection_fails_loudly_on_broken_subpackage(tmp_path):
-    """pkgutil swallows subpackage ImportErrors by default — that would mean a
-    silently INCOMPLETE fdset (models quietly missing). Reflection must
-    propagate the failure instead."""
+    """An import failure in a discovered _pb2 subpackage is propagated instead
+    of producing an incomplete descriptor set."""
     proto_root = tmp_path / "protosrc"
     (proto_root / "badpkg" / "sub").mkdir(parents=True)
     (proto_root / "badpkg" / "mini.proto").write_text(

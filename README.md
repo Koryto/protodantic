@@ -85,8 +85,8 @@ Or drive it from Python:
 ```python
 from protodantic import compile_fdset, fdset_from_package, generate_source
 
-source = generate_source(compile_fdset(["demo.proto"]))
-source = generate_source(fdset_from_package("my_org_protos"))  # from installed _pb2
+source_from_proto = generate_source(compile_fdset(["demo.proto"]))
+source_from_package = generate_source(fdset_from_package("my_org_protos"))
 ```
 
 ## Type mapping
@@ -123,7 +123,7 @@ Already consuming a centralized proto package as protoc-generated `_pb2` modules
 protodantic generate --from-package my_org_protos -o generated/
 ```
 
-Reflection imports only the `*_pb2` modules (helpers and grpc stubs are never touched) and generates model sources identical to compiling the original `.proto` files. And generated models interoperate with `_pb2` instances directly:
+Reflection imports `*_pb2` modules without importing helper modules or gRPC stubs. Generated module paths follow the proto file names recorded in their descriptors. Generated models also interoperate directly with `_pb2` instances:
 
 ```python
 user = User.from_proto(their_pb2_user_instance)   # accepts _pb2 messages
@@ -133,7 +133,7 @@ raw = their_pb2.User.FromString(user.to_proto_bytes())  # canonical bytes
 
 ## How it works
 
-`protoc` (bundled via `grpcio-tools`) compiles your protos to a `FileDescriptorSet`, which codegen embeds in the generated module. At runtime, `ProtoModel` builds dynamic protobuf message classes from those descriptors — no `_pb2.py` files needed, and no protobuf internals leak into your models.
+Both input paths produce serialized `FileDescriptorSet` bytes: `grpcio-tools` compiles `.proto` sources, while descriptor reflection reads installed `_pb2` packages. The same code generator consumes either form. At runtime, `ProtoModel` builds protobuf message classes from the embedded descriptors.
 
 If several imported generated modules define the same proto type, the registry behind `model_for()` / nested-message resolution is last-import-wins.
 
@@ -141,8 +141,7 @@ If several imported generated modules define the same proto type, the registry b
 
 Requires Python ≥ 3.11. proto3 only by design (proto2 input is rejected with a clear error). The full supported-behavior spec lives in [tests/](tests/) — every test documents one use case. Documented policies: unknown fields are dropped when a model re-serializes (the model is the source of truth), and naive datetimes are interpreted as UTC.
 
-- **0.1.x (current)** — greenfield: `.proto` files *and directories* → pydantic codegen (single module or package tree) with lossless bidirectional round-trips, plus the semantics future drops build on.
-- **0.1.2 — greenfield closeout** — generation from installed `_pb2` packages by descriptor reflection (no `.proto` sources needed), plus `to_proto(into=TheirPb2Class)`.
+- **0.1.2 (current)** — pydantic code generation from `.proto` files, directories, or installed `_pb2` packages, with lossless protobuf round-trips and direct `_pb2` interop.
 - **0.2.x — brownfield** — reverse schema codegen: pydantic models → `.proto`.
 - **0.3.0 — performance** — benchmark suite (vs `json.loads`+pydantic, raw `_pb2`, betterproto), then cached field plans and trusted-construction fast paths.
 

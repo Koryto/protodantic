@@ -114,9 +114,7 @@ def test_shadowed_wkt_file_with_diverging_content_fails_loudly(tmp_path):
 
 
 def test_shadowed_wkt_with_diverging_labels_fails_loudly(tmp_path):
-    """Divergence detection covers ALL wire-significant structure, not just
-    names/numbers/types: a shadow with the right fields but a repeated label
-    is still a different schema and must be refused."""
+    """A reserved descriptor with a different field label is rejected."""
     nested = tmp_path / "google" / "protobuf"
     nested.mkdir(parents=True)
     (nested / "timestamp.proto").write_text(
@@ -151,8 +149,7 @@ def test_shadowed_wkt_with_custom_json_name_fails_loudly(tmp_path):
 
 
 def test_vendored_identical_wkt_is_accepted(tmp_path):
-    """Orgs vendor the google WKT protos to pin versions: an identical
-    vendored copy passes validation and stays runtime-handled."""
+    """An identical vendored well-known type remains runtime-handled."""
     wkt_root = importlib.resources.files("grpc_tools") / "_proto"
     shipped = (wkt_root / "google" / "protobuf" / "timestamp.proto").read_text()
     nested = tmp_path / "google" / "protobuf"

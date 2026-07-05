@@ -33,9 +33,9 @@ The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` 
 - Nested-message resolution is scoped per descriptor pool (per generated module), so duplicate generated modules coexist in one process. `model_for()` is global, last-import-wins. Plain subclasses of generated models do **not** register; re-declaring `__proto_full_name__` in the subclass body is the explicit opt-in.
 - `_pb2` interop is a public contract: `from_proto()` accepts classic protoc-generated instances; `to_proto_bytes()` output parses into `_pb2` classes.
 - Tree output (`generate_tree` / directory input): one module per proto **file** (paths derive from file paths, never proto packages), a single shared pool in `_descriptors.py`, root-anchored relative imports (trees are relocatable), external `-I` imports emitted into the tree. Layout defaults follow input shape (directory → tree, files → module); `--layout` overrides; layout/`-o` contradictions fail loudly.
-- Tree regeneration is managed-clean: if every file in the output dir carries the generated header (bytecode caches excluded), the dir is replaced wholesale so stale modules die; any foreign file aborts *before* any mutation. Conscious dismissal: a foreign file whose first line matches the generated-stamp *shape* (byte-exact or malformed-version copies) is treated as generated — writing our header is claiming the contract, and distinguishing impostors beyond shape validation is a non-goal.
-- Reserved `google/protobuf/` file names are validated against the shipped descriptors (complete normalized comparison, deny-listing only known-cosmetic metadata): an identical vendored copy passes and stays runtime-handled; a diverging shadow fails loudly.
-- Reflection (`fdset_from_package`): discovers `*_pb2` modules by filesystem traversal (nothing else is ever imported — not helpers, not `_pb2_grpc` stubs, not unrelated subpackage initializers), supports nested PEP 420 namespace packages, and emits files in canonical order (dependencies first, lexicographic within a ready wave). Generated *model sources* are identical to compiling the `.proto` sources (pinned test); the descriptor blob is semantically equivalent but may differ cosmetically (default `json_name` entries).
+- Tree regeneration is managed-clean: generated files and bytecode may be replaced; any other file aborts the operation before mutation. A file whose first line matches the generated-header format is treated as generated.
+- Reserved runtime-handled `google/protobuf/` file names must match the shipped descriptors. Identical vendored copies are accepted; divergent schemas raise `ValueError`.
+- Reflection (`fdset_from_package`) imports discovered `*_pb2` modules without importing helpers, `_pb2_grpc` stubs, or unrelated subpackages. It supports nested PEP 420 namespace packages and emits descriptors in deterministic dependency order.
 - `to_proto(into=SomeClass)` requires a matching proto full name (`TypeError` naming both otherwise); schema-version skew follows wire-compat semantics — newer fields survive older target classes as protobuf unknown fields.
 
 ## Code conventions
@@ -57,8 +57,7 @@ The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` 
 
 ## Roadmap context (shapes what "don't block the future" means)
 
-- **0.1.x (current)** — greenfield: `.proto` files/directories → pydantic (single module or package tree) with lossless bidirectional round-trips.
-- **0.1.2 — greenfield closeout**: generating from installed `_pb2` packages by descriptor reflection, plus `to_proto(into=TheirPb2Class)`. This is still *schema ingestion* — `_pb2` is a proxy form of the `.proto` files, feeding the same fdset seam.
+- **0.1.2 (current)** — pydantic code generation from `.proto` files, directories, or installed `_pb2` packages, with lossless protobuf round-trips and direct `_pb2` interop.
 - **0.2.x — brownfield**: reverse schema codegen — pydantic models → `.proto`. The genuinely new direction (pydantic sources as input). Weigh brownfield adoption at least as high as greenfield polish.
 - **0.3.0 — performance**: benchmark suite first (vs `json.loads`+pydantic, raw `_pb2`, betterproto) — **benchmarks before perf claims** — then cached field plans and trusted-construction fast paths. The conversion internals are deliberately unconstrained by public API; keep it that way.
 - gRPC service stubs are permanently out of scope: protodantic is a message layer.
