@@ -24,6 +24,11 @@ TREE_DIR = Path(__file__).parent / "protos" / "tree"
 MYORG_PROTOS = sorted(str(p) for p in (TREE_DIR / "myorg").rglob("*.proto"))
 
 
+def _purge_modules(prefix: str) -> None:
+    for name in [m for m in sys.modules if m == prefix or m.startswith(prefix + ".")]:
+        del sys.modules[name]
+
+
 @pytest.fixture(scope="module")
 def myorg_pb2(tmp_path_factory):
     """An installed-like classic _pb2 package (`import myorg`) compiled from
@@ -37,6 +42,7 @@ def myorg_pb2(tmp_path_factory):
     sys.path.insert(0, str(site))
     yield "myorg"
     sys.path.remove(str(site))
+    _purge_modules("myorg")
 
 
 # -- fdset_from_package API ---------------------------------------------------
@@ -55,9 +61,19 @@ def test_fdset_from_package_collects_all_files(myorg_pb2):
     assert "google/protobuf/timestamp.proto" in names  # transitive dep
 
 
-def test_fdset_from_package_is_deterministic(myorg_pb2):
-    """Two reflections produce byte-identical fdsets (canonical file order)."""
-    assert protodantic.fdset_from_package(myorg_pb2) == protodantic.fdset_from_package(myorg_pb2)
+def test_fdset_from_package_canonical_order(myorg_pb2):
+    """Byte-identical across calls AND a pinned canonical file order:
+    dependencies before dependents, lexicographic among the independent —
+    process-independent by construction, not by accident of dict ordering."""
+    first = protodantic.fdset_from_package(myorg_pb2)
+    assert first == protodantic.fdset_from_package(myorg_pb2)
+    names = [f.name for f in descriptor_pb2.FileDescriptorSet.FromString(first).file]
+    assert names == [
+        "google/protobuf/timestamp.proto",
+        "myorg/common.proto",
+        "myorg/analytics/events.proto",
+        "myorg/billing.proto",
+    ]
 
 
 def test_reflection_equals_source_compilation(myorg_pb2):
@@ -85,6 +101,56 @@ def test_fdset_from_package_without_descriptors_raises(tmp_path):
             protodantic.fdset_from_package("emptypkg")
     finally:
         sys.path.remove(str(tmp_path))
+        _purge_modules("emptypkg")
+
+
+def _build_pb2_site(*, tmp_path: Path, package: str, with_init: bool) -> Path:
+    """A site dir holding <package>/mini_pb2.py plus a booby-trapped helper
+    module that raises if imported."""
+    proto_root = tmp_path / "protosrc"
+    (proto_root / package).mkdir(parents=True)
+    (proto_root / package / "mini.proto").write_text(
+        f'syntax = "proto3";\npackage {package};\nmessage Tiny {{ string v = 1; }}\n'
+    )
+    site = tmp_path / "site"
+    site.mkdir()
+    wkt = str(importlib.resources.files("grpc_tools") / "_proto")
+    args = ["protoc", f"-I{proto_root}", f"-I{wkt}", f"--python_out={site}",
+            str(proto_root / package / "mini.proto")]
+    assert protoc.main(args) == 0
+    (site / package / "evil_helper.py").write_text("raise RuntimeError('must not be imported')\n")
+    if with_init:
+        (site / package / "__init__.py").write_text("")
+    return site
+
+
+def test_reflection_imports_only_pb2_modules(tmp_path):
+    """Enterprise packages carry helper modules with import side effects (or
+    grpc stubs needing extra deps): reflection must import only *_pb2 modules
+    — the protoc naming contract — never the rest."""
+    site = _build_pb2_site(tmp_path=tmp_path, package="sidefx", with_init=True)
+    sys.path.insert(0, str(site))
+    try:
+        fdset_bytes = protodantic.fdset_from_package("sidefx")
+        names = {f.name for f in descriptor_pb2.FileDescriptorSet.FromString(fdset_bytes).file}
+        assert "sidefx/mini.proto" in names
+    finally:
+        sys.path.remove(str(site))
+        _purge_modules("sidefx")
+
+
+def test_reflection_supports_namespace_packages(tmp_path):
+    """PEP 420 namespace packages (no __init__.py) — common for enterprise
+    proto wheels — are discoverable too."""
+    site = _build_pb2_site(tmp_path=tmp_path, package="sidens", with_init=False)
+    sys.path.insert(0, str(site))
+    try:
+        fdset_bytes = protodantic.fdset_from_package("sidens")
+        names = {f.name for f in descriptor_pb2.FileDescriptorSet.FromString(fdset_bytes).file}
+        assert "sidens/mini.proto" in names
+    finally:
+        sys.path.remove(str(site))
+        _purge_modules("sidens")
 
 
 # -- CLI ----------------------------------------------------------------------
@@ -124,13 +190,28 @@ def test_cli_from_package_module_layout(myorg_pb2, tmp_path):
 
 
 def test_cli_from_package_and_positional_are_exclusive(myorg_pb2, tmp_path):
+    """Positional protos and --from-package together is a contradiction with a
+    specific contract message (not a generic usage error)."""
     result = CliRunner().invoke(
         main,
         ["generate", str(TREE_DIR / "myorg" / "common.proto"), "--from-package", myorg_pb2,
          "-o", str(tmp_path / "x")],
     )
-    assert result.exit_code != 0
-    assert "--from-package" in (result.output + result.stderr)
+    assert result.exit_code == 1
+    assert "cannot be used together" in (result.output + result.stderr)
+
+
+def test_cli_from_package_rejects_includes(myorg_pb2, tmp_path):
+    """-I belongs to protoc compilation; combining it with --from-package is
+    unspecifiable and must error, never be silently ignored."""
+    result = CliRunner().invoke(
+        main,
+        ["generate", "--from-package", myorg_pb2, "-I", str(tmp_path), "-o", str(tmp_path / "g")],
+    )
+    assert result.exit_code == 1
+    combined = result.output + result.stderr
+    assert "--from-package" in combined
+    assert "include" in combined.lower()
 
 
 def test_cli_requires_some_input(tmp_path):

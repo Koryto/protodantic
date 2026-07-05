@@ -32,7 +32,8 @@ def pb2(tmp_path_factory):
         import demo_pb2
     finally:
         sys.path.remove(str(out_dir))
-    return demo_pb2
+    yield demo_pb2
+    sys.modules.pop("demo_pb2", None)
 
 
 @pytest.fixture(scope="module")
@@ -88,11 +89,15 @@ def test_to_proto_into_pb2_class(mod, pb2):
 
 
 def test_to_proto_into_wrong_class_raises(mod, pb2):
-    """A mismatched target class is a TypeError naming both proto types."""
+    """A mismatched target class is a TypeError naming BOTH proto types —
+    what was expected and what was given."""
     import pytest as _pytest
 
-    with _pytest.raises(TypeError, match="demo.Address"):
+    with _pytest.raises(TypeError) as exc_info:
         mod.User(id=1).to_proto(into=pb2.Address)
+    message = str(exc_info.value)
+    assert "demo.User" in message
+    assert "demo.Address" in message
 
 
 def test_to_proto_into_roundtrip(mod, pb2):
