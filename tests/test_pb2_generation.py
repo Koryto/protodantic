@@ -246,6 +246,11 @@ def test_cli_pb2_directory_input_redirects_to_from_package(tmp_path):
     assert "--from-package" in (result.output + result.stderr)
 
 
+# positional args by contract: monkeypatch replacement for Path.rglob(self, pattern)
+def _rglob_permission_denied(self, pattern):
+    raise PermissionError("denied by test")
+
+
 def test_cli_preflight_oserror_fails_cleanly(tmp_path, monkeypatch):
     """Filesystem errors during input preflight (e.g. permission denied while
     scanning a directory) surface as clean CLI errors, never tracebacks."""
@@ -253,10 +258,7 @@ def test_cli_preflight_oserror_fails_cleanly(tmp_path, monkeypatch):
     root.mkdir()
     (root / "a.proto").write_text('syntax = "proto3";\npackage pf;\nmessage A { string v = 1; }\n')
 
-    def denied(self, pattern):
-        raise PermissionError("denied by test")
-
-    monkeypatch.setattr(Path, "rglob", denied)
+    monkeypatch.setattr(Path, "rglob", _rglob_permission_denied)
     result = CliRunner().invoke(main, ["generate", str(root), "-o", str(tmp_path / "out")])
     assert result.exit_code == 1
     assert "denied by test" in (result.output + result.stderr)
