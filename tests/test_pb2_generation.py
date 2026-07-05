@@ -7,7 +7,9 @@ module paths derive from the proto file names recorded in the descriptors —
 never from the _pb2 python layout).
 """
 
+import importlib
 import importlib.resources
+import shutil
 import sys
 from pathlib import Path
 
@@ -114,8 +116,9 @@ def test_fdset_from_package_without_descriptors_raises(tmp_path):
 
 
 def _build_pb2_site(*, tmp_path: Path, package: str, with_init: bool) -> Path:
-    """A site dir holding <package>/mini_pb2.py plus a booby-trapped helper
-    module that raises if imported."""
+    """A site dir holding <package>/mini_pb2.py plus three booby-trapped
+    neighbors that raise if imported: a helper module, a _pb2_grpc stub, and
+    an unrelated subpackage."""
     proto_root = tmp_path / "protosrc"
     (proto_root / package).mkdir(parents=True)
     (proto_root / package / "mini.proto").write_text(
@@ -268,8 +271,6 @@ def test_layout_follows_descriptor_names_not_python_layout(tmp_path):
     """The proof the myorg fixture can't give (its python layout coincides
     with its proto paths): _pb2 modules buried under an unrelated python
     container still generate at their DESCRIPTOR-recorded proto paths."""
-    import shutil
-
     proto_root = tmp_path / "protosrc"
     (proto_root / "wire").mkdir(parents=True)
     (proto_root / "wire" / "format.proto").write_text(
@@ -317,8 +318,6 @@ def test_cli_from_package_generates_tree(myorg_pb2, tmp_path):
     modules_before = set(sys.modules)
     sys.path.insert(0, str(out_root))
     try:
-        import importlib
-
         billing = importlib.import_module("reflected.myorg.billing")
         common = importlib.import_module("reflected.myorg.common")
         invoice = billing.Invoice(id="r-1", total=common.Money(currency="PLN", units=7))

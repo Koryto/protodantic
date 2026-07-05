@@ -7,6 +7,9 @@ from types import ModuleType
 from google.protobuf import descriptor_pb2
 from google.protobuf.descriptor import FileDescriptor
 
+# the protoc naming contract; also used by the CLI's input-redirect preflight
+PB2_MODULE_GLOB = "*_pb2.py"
+
 
 def fdset_from_package(package: str) -> bytes:
     """Serialized FileDescriptorSet reflected from an installed _pb2 package.
@@ -43,7 +46,7 @@ def _iter_pb2_module_names(*, package: ModuleType) -> list[str]:
     names: set[str] = set()
     for root in getattr(package, "__path__", []):
         root_path = Path(root)
-        for pb2_file in root_path.rglob("*_pb2.py"):
+        for pb2_file in root_path.rglob(PB2_MODULE_GLOB):
             relative = pb2_file.relative_to(root_path).with_suffix("")
             names.add(package.__name__ + "." + ".".join(relative.parts))
     return sorted(names)

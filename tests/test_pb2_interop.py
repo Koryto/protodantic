@@ -5,11 +5,17 @@ those classes parse.
 """
 
 import importlib.resources
+import importlib.util
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+from google.protobuf import message_factory
+from google.protobuf.message import Message
 from grpc_tools import protoc
+
+from protodantic import compile_fdset, generate_source, load_pool
 
 PROTO_DIR = Path(__file__).parent / "protos"
 
@@ -72,8 +78,6 @@ def test_pb2_roundtrip_through_model(mod, pb2):
 def test_to_proto_into_pb2_class(mod, pb2):
     """to_proto(into=TheirPb2Class) returns an instance of THEIR class — the
     grpc-call-site handoff without manual FromString plumbing."""
-    from datetime import datetime, timezone
-
     user = mod.User(
         id=5,
         name="into",
@@ -91,9 +95,7 @@ def test_to_proto_into_pb2_class(mod, pb2):
 def test_to_proto_into_wrong_class_raises(mod, pb2):
     """A mismatched target class is a TypeError naming BOTH proto types —
     what was expected and what was given."""
-    import pytest as _pytest
-
-    with _pytest.raises(TypeError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         mod.User(id=1).to_proto(into=pb2.Address)
     message = str(exc_info.value)
     assert "demo.User" in message
@@ -116,8 +118,6 @@ def test_to_proto_into_requires_a_message_class(mod, pb2):
     with pytest.raises(TypeError, match="message class"):
         mod.User(id=1).to_proto(into=object)  # no DESCRIPTOR to leak on
 
-    from google.protobuf.message import Message
-
     with pytest.raises(TypeError, match="message class"):
         mod.User(id=1).to_proto(into=Message)  # abstract base: DESCRIPTOR is None
 
@@ -133,12 +133,6 @@ def test_to_proto_into_tolerates_compatible_version_skew(tmp_path):
     skew follows wire-compat semantics. A newer model handed to an older
     target class keeps the newer fields as protobuf unknown fields — nothing
     is silently lost in transit."""
-    import importlib.util
-
-    from google.protobuf import message_factory
-
-    from protodantic import compile_fdset, generate_source, load_pool
-
     v1 = tmp_path / "v1.proto"
     v1.write_text('syntax = "proto3";\npackage skew;\nmessage Event { string id = 1; }\n')
     v2 = tmp_path / "v2.proto"
