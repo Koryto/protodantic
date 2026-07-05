@@ -54,6 +54,7 @@ The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` 
 ## Roadmap context (shapes what "don't block the future" means)
 
 - **0.1.x (current)** — greenfield: `.proto` files/directories → pydantic (single module or package tree) with lossless bidirectional round-trips.
-- **0.2.0 — brownfield**: reverse schema codegen (pydantic models → `.proto`), generating from installed `_pb2` packages by descriptor reflection, `to_proto(into=TheirPb2Class)`. Weigh brownfield adoption at least as high as greenfield polish.
+- **0.1.2 — greenfield closeout**: generating from installed `_pb2` packages by descriptor reflection, plus `to_proto(into=TheirPb2Class)`. This is still *schema ingestion* — `_pb2` is a proxy form of the `.proto` files, feeding the same fdset seam.
+- **0.2.x — brownfield**: reverse schema codegen — pydantic models → `.proto`. The genuinely new direction (pydantic sources as input). Weigh brownfield adoption at least as high as greenfield polish.
 - **0.3.0 — performance**: benchmark suite first (vs `json.loads`+pydantic, raw `_pb2`, betterproto) — **benchmarks before perf claims** — then cached field plans and trusted-construction fast paths. The conversion internals are deliberately unconstrained by public API; keep it that way.
 - gRPC service stubs are permanently out of scope: protodantic is a message layer.

@@ -481,6 +481,59 @@ def test_failed_regeneration_preserves_previous_tree(tmp_path, monkeypatch):
     assert leftovers == []
 
 
+def test_out_pointing_at_existing_file_fails_safely(tmp_path):
+    """-o hitting an existing regular file (tree layout) refuses cleanly and
+    leaves the file untouched — never renamed, never deleted."""
+    root = tmp_path / "protos"
+    root.mkdir()
+    (root / "a.proto").write_text('syntax = "proto3";\npackage sf;\nmessage A { string v = 1; }\n')
+    victim = tmp_path / "somefile"
+    victim.write_text("precious user data")
+
+    result = CliRunner().invoke(main, ["generate", str(root), "-o", str(victim)])
+    assert result.exit_code == 1
+    assert "directory" in (result.output + result.stderr).lower()
+    assert victim.exists()
+    assert victim.read_text() == "precious user data"
+    leftovers = [p.name for p in tmp_path.iterdir() if "protodantic" in p.name.lower()]
+    assert leftovers == []
+
+
+def test_tree_output_name_must_be_importable(tmp_path):
+    """The tree root becomes a python package: a non-identifier output name
+    (my-models) is refused instead of silently generating an unimportable tree."""
+    root = tmp_path / "protos"
+    root.mkdir()
+    (root / "a.proto").write_text('syntax = "proto3";\npackage ni;\nmessage A { string v = 1; }\n')
+
+    result = CliRunner().invoke(main, ["generate", str(root), "-o", str(tmp_path / "my-models")])
+    assert result.exit_code == 1
+    assert "package name" in (result.output + result.stderr).lower()
+    assert not (tmp_path / "my-models").exists()
+
+
+def test_foreign_sibling_dirs_survive(tmp_path):
+    """Sibling directories that merely LOOK like our staging/backup names are
+    foreign data: generation must never delete them, and unique staging paths
+    mean concurrent generators can't race over shared names."""
+    root = tmp_path / "protos"
+    root.mkdir()
+    (root / "a.proto").write_text('syntax = "proto3";\npackage fs;\nmessage A { string v = 1; }\n')
+    out = tmp_path / "gen"
+    decoy_staging = tmp_path / "gen.protodantic-staging"
+    decoy_backup = tmp_path / "gen.protodantic-backup"
+    decoy_staging.mkdir()
+    (decoy_staging / "handwritten.txt").write_text("mine")
+    decoy_backup.mkdir()
+    (decoy_backup / "notes.txt").write_text("also mine")
+
+    assert CliRunner().invoke(main, ["generate", str(root), "-o", str(out)]).exit_code == 0
+    assert CliRunner().invoke(main, ["generate", str(root), "-o", str(out)]).exit_code == 0
+
+    assert (decoy_staging / "handwritten.txt").read_text() == "mine"
+    assert (decoy_backup / "notes.txt").read_text() == "also mine"
+
+
 def test_regeneration_tolerates_pycache(tmp_path):
     """Imported generated packages grow __pycache__; regeneration must treat
     bytecode as our own byproduct, not as foreign content."""

@@ -133,7 +133,8 @@ If several imported generated modules define the same proto type, the registry b
 Requires Python ≥ 3.11. proto3 only by design (proto2 input is rejected with a clear error). The full supported-behavior spec lives in [tests/](tests/) — every test documents one use case. Documented policies: unknown fields are dropped when a model re-serializes (the model is the source of truth), and naive datetimes are interpreted as UTC.
 
 - **0.1.x (current)** — greenfield: `.proto` files *and directories* → pydantic codegen (single module or package tree) with lossless bidirectional round-trips, plus the semantics future drops build on.
-- **0.2.0 — brownfield** — reverse schema codegen (pydantic models → `.proto`), generating from installed `_pb2` packages by descriptor reflection, `to_proto(into=TheirPb2Class)`.
+- **0.1.2 — greenfield closeout** — generation from installed `_pb2` packages by descriptor reflection (no `.proto` sources needed), plus `to_proto(into=TheirPb2Class)`.
+- **0.2.x — brownfield** — reverse schema codegen: pydantic models → `.proto`.
 - **0.3.0 — performance** — benchmark suite (vs `json.loads`+pydantic, raw `_pb2`, betterproto), then cached field plans and trusted-construction fast paths.
 
 gRPC service stubs are out of scope: protodantic is a message layer.

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import keyword
 import shutil
+import tempfile
+import uuid
 from pathlib import Path
 
 import click
@@ -46,6 +49,13 @@ def generate(protos: tuple[str, ...], includes: tuple[str, ...], out: str, layou
             "layout 'module' writes a single .py file, but -o does not end with .py; "
             "pass --layout tree for a package tree or point -o at a .py file"
         )
+    if resolved_layout == "tree":
+        out_name = Path(out).name
+        if not out_name.isidentifier() or keyword.iskeyword(out_name):
+            raise click.ClickException(
+                f"tree output directory {out_name!r} is not a valid python package name; "
+                "the tree root is imported as a package — use letters, digits, and underscores"
+            )
 
     try:
         fdset = compile_fdset(protos=protos, includes=includes)
@@ -67,6 +77,10 @@ def _write_tree(*, out_dir: Path, files: dict[str, str]) -> None:
     """Managed-clean, failure-atomic write: refuse to touch anything foreign,
     build the replacement in a staging dir, then swap — a failed write can
     never destroy the previous valid tree."""
+    if out_dir.exists() and not out_dir.is_dir():
+        raise click.ClickException(
+            f"output path {out_dir} exists and is not a directory; refusing to touch it"
+        )
     if out_dir.exists():
         foreign = _foreign_files(out_dir=out_dir)
         if foreign:
@@ -75,11 +89,13 @@ def _write_tree(*, out_dir: Path, files: dict[str, str]) -> None:
                 f"{', '.join(foreign)}; refusing to modify"
             )
 
-    staging = out_dir.parent / f"{out_dir.name}.protodantic-staging"
-    backup = out_dir.parent / f"{out_dir.name}.protodantic-backup"
-    for leftover in (staging, backup):
-        if leftover.exists():
-            shutil.rmtree(leftover)
+    # unique staging/backup paths: we only ever delete directories we created
+    # in this run — a pre-existing sibling is foreign data, and concurrent
+    # generators can't race over shared names
+    out_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(
+        tempfile.mkdtemp(prefix=f"{out_dir.name}.", suffix=".protodantic-staging", dir=out_dir.parent)
+    )
     try:
         for rel_path, source in sorted(files.items()):
             target = staging / rel_path
@@ -90,6 +106,7 @@ def _write_tree(*, out_dir: Path, files: dict[str, str]) -> None:
         raise
 
     if out_dir.exists():
+        backup = out_dir.parent / f"{out_dir.name}.{uuid.uuid4().hex}.protodantic-backup"
         out_dir.rename(backup)
         try:
             staging.rename(out_dir)
@@ -99,7 +116,6 @@ def _write_tree(*, out_dir: Path, files: dict[str, str]) -> None:
             raise
         shutil.rmtree(backup)
     else:
-        out_dir.parent.mkdir(parents=True, exist_ok=True)
         staging.rename(out_dir)
 
 
