@@ -20,6 +20,7 @@ def _import_source(source: str, name: str, tmp_path):
 
 
 def test_registry_last_import_wins(tmp_path):
+    """Importing a duplicate proto type replaces the global registry target."""
     proto = tmp_path / "regsem.proto"
     proto.write_text(
         'syntax = "proto3";\npackage test.regsem;\nmessage Token { string v = 1; }\n'

@@ -4,6 +4,7 @@ predictable class names (Outer_Middle_Inner) and round-trip intact.
 
 
 def test_three_level_nesting(generate):
+    """Three nested message levels flatten predictably and round-trip."""
     mod = generate("nesting.proto")
     outer = mod.Outer(
         middle=mod.Outer_Middle(tag="m", inner=mod.Outer_Middle_Inner(leaf="deep"))

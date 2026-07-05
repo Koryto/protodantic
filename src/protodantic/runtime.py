@@ -16,7 +16,7 @@ from google.protobuf import (
     timestamp_pb2,
     wrappers_pb2,
 )
-from google.protobuf.descriptor import FieldDescriptor
+from google.protobuf.descriptor import Descriptor, FieldDescriptor
 from google.protobuf.message import Message
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -298,8 +298,32 @@ class ProtoModel(BaseModel):
         message_cls = cls.proto_class()
         return message_cls()
 
-    def to_proto(self) -> Message:
-        """Convert this model to a protobuf message."""
+    def to_proto(self, *, into: type[Message] | None = None) -> Message:
+        """Convert this model to a protobuf message. ``into`` accepts a message
+        class of the same proto full name (e.g. a classic _pb2 class) and
+        returns an instance of it."""
+        if into is not None:
+            # type checks BEFORE touching DESCRIPTOR: hostile attributes must
+            # not leak arbitrary exceptions past the promised TypeError
+            if not (isinstance(into, type) and issubclass(into, Message)):
+                raise TypeError(
+                    f"to_proto(into=...) expects a protobuf message class, got {into!r}"
+                )
+            # abstract Message subclasses pass issubclass but carry DESCRIPTOR = None
+            descriptor = getattr(into, "DESCRIPTOR", None)
+            if not isinstance(descriptor, Descriptor):
+                raise TypeError(
+                    f"to_proto(into=...) expects a protobuf message class, got {into!r}"
+                )
+            target_name = descriptor.full_name
+            if target_name != self.__proto_full_name__:
+                raise TypeError(
+                    f"{type(self).__name__}.to_proto(into=...) expects a class for "
+                    f"{self.__proto_full_name__!r}, got {target_name!r}"
+                )
+            target = into()
+            target.ParseFromString(self.to_proto_bytes())
+            return target
         msg = self._new_message()
         for fd in msg.DESCRIPTOR.fields:
             value = getattr(self, python_field_name(proto_name=fd.name))

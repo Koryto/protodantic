@@ -7,5 +7,6 @@ import pytest
 
 
 def test_proto2_is_rejected_with_clear_error(generate):
+    """A proto2 schema raises the documented unsupported-syntax error."""
     with pytest.raises(NotImplementedError, match="proto2"):
         generate("legacy.proto")

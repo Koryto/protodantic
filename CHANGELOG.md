@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-06
+
+### Added
+
+- Generation from installed `_pb2` packages: `protodantic generate --from-package my_org_protos -o generated/` and the `fdset_from_package()` API. Namespace packages are supported, and generated module paths follow the proto file names recorded in the descriptors.
+- `to_proto(into=TheirPb2Class)`: convert a model directly into an instance of a classic `_pb2` class (same proto full name required; `TypeError` naming both types otherwise). Schema-version skew follows wire-compat semantics — newer fields survive older target classes as protobuf unknown fields.
+- Clear CLI guardrails: `--from-package` is mutually exclusive with positional protos and `-I`; feeding a `.py` file as a positional input redirects to `--from-package`.
+
+### Fixed
+
+- Managed-clean regeneration rejects lookalike generated headers and treats only bytecode as disposable under `__pycache__`.
+- User schemas under `google/protobuf/` generate normally; files that shadow runtime-handled protobuf descriptors with different schemas fail loudly.
+
 ## [0.1.1] - 2026-07-05
 
 ### Added

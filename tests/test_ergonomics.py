@@ -2,6 +2,7 @@
 JSON schema, and proto-JSON all work.
 """
 
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -25,16 +26,19 @@ def full_user(mod):
 
 
 def test_model_dump(mod):
+    """Generated models support standard nested python-mode dumps."""
     dumped = full_user(mod).model_dump()
     assert dumped["name"] == "kory"
     assert dumped["address"]["city"] == "Warsaw"
 
 
 def test_model_dump_json(mod):
+    """Generated models support standard pydantic JSON dumps."""
     assert '"kory"' in full_user(mod).model_dump_json()
 
 
 def test_model_copy_update(mod):
+    """A standard model_copy update remains protobuf-serializable."""
     user = full_user(mod)
     clone = user.model_copy(update={"name": "ada"})
     assert clone.name == "ada"
@@ -59,8 +63,6 @@ def test_proto_json_uses_canonical_names(mod):
 def test_from_proto_json_kwargs_passthrough(mod):
     """json_format options are exposed both ways — e.g. lenient ingestion of
     JSON containing fields from a newer schema revision."""
-    import json
-
     payload = json.loads(full_user(mod).to_proto_json())
     payload["fieldFromTheFuture"] = 123
     restored = mod.User.from_proto_json(json.dumps(payload), ignore_unknown_fields=True)
@@ -76,6 +78,7 @@ def test_json_name_option_respected(mod):
 
 
 def test_mutation_then_serialize(mod):
+    """In-place list and map mutations are reflected on the wire."""
     user = full_user(mod)
     user.tags.append("y")
     user.counts["k"] = 3

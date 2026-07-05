@@ -47,6 +47,7 @@ def full_user(demo):
 
 
 def test_pydantic_to_proto(demo):
+    """A populated model converts into a semantically equivalent message."""
     msg = full_user(demo).to_proto()
     assert msg.id == 7
     assert msg.name == "kory"
@@ -62,12 +63,14 @@ def test_pydantic_to_proto(demo):
 
 
 def test_wire_roundtrip(demo):
+    """Canonical wire bytes restore the original populated model."""
     user = full_user(demo)
     restored = demo.User.from_proto_bytes(user.to_proto_bytes())
     assert restored == user
 
 
 def test_proto_to_pydantic(demo):
+    """A populated protobuf message converts into the expected model."""
     msg = demo.User.proto_class()()
     msg.id = 42
     msg.name = "ada"
@@ -83,6 +86,7 @@ def test_proto_to_pydantic(demo):
 
 
 def test_unset_fields_roundtrip(demo):
+    """Unset fields retain presence semantics and collection defaults."""
     user = demo.User()
     restored = demo.User.from_proto_bytes(user.to_proto_bytes())
     assert restored == user
@@ -95,6 +99,7 @@ def test_unset_fields_roundtrip(demo):
 
 
 def test_json_roundtrip(demo):
+    """Canonical protobuf JSON restores the original model."""
     user = full_user(demo)
     restored = demo.User.from_proto_json(user.to_proto_json())
     assert restored == user
