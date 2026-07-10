@@ -57,6 +57,14 @@ protodantic generate ./protos -o generated/
 # generated/myorg/billing.py, generated/myorg/common.py, ...
 ```
 
+For a mixed proto2/proto3 source tree, explicitly generate only its proto3 subset:
+
+```sh
+protodantic generate ./protos --proto2 skip -o generated/
+```
+
+Skipped proto2 descriptors remain embedded for import and custom-option resolution. If a generated proto3 field directly references a skipped proto2 type, generation fails loudly instead of emitting an incomplete model.
+
 ```python
 from generated.myorg.billing import Invoice
 ```
@@ -141,7 +149,7 @@ If several imported generated modules define the same proto type, the registry b
 
 Requires Python ≥ 3.11. proto3 only by design — proto2 input is rejected with a clear error, but mixed proto2/proto3 packages (common in enterprise repos) can opt into `--proto2 skip` to generate the proto3 subset: skipped files are named in an audit comment, and any proto3 field depending on a proto2 type fails loudly instead of generating a hole. The full supported-behavior spec lives in [tests/](tests/) — every test documents one use case. Documented policies: unknown fields are dropped when a model re-serializes (the model is the source of truth), and naive datetimes are interpreted as UTC.
 
-- **0.1.2 (current)** — pydantic code generation from `.proto` files, directories, or installed `_pb2` packages, with lossless protobuf round-trips and direct `_pb2` interop.
+- **0.1.3 (current)** — mixed proto2/proto3 packages can explicitly skip proto2 files while generating a complete, audited proto3 subset.
 - **0.2.x — brownfield** — reverse schema codegen: pydantic models → `.proto`.
 - **0.3.0 — performance** — benchmark suite (vs `json.loads`+pydantic, raw `_pb2`, betterproto), then cached field plans and trusted-construction fast paths.
 
