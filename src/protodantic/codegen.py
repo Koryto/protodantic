@@ -7,7 +7,14 @@ import textwrap
 from collections import Counter
 from typing import NamedTuple
 
-from google.protobuf import any_pb2, descriptor_pb2, duration_pb2, struct_pb2, timestamp_pb2, wrappers_pb2
+from google.protobuf import (
+    any_pb2,
+    descriptor_pb2,
+    duration_pb2,
+    struct_pb2,
+    timestamp_pb2,
+    wrappers_pb2,
+)
 from google.protobuf.descriptor import (
     Descriptor,
     EnumDescriptor,
@@ -71,7 +78,9 @@ _GENERATED_STAMP = f"{_GENERATED_STAMP_PREFIX}{__version__}{_GENERATED_STAMP_SUF
 
 def _is_generated_header(*, line: str) -> bool:
     stripped = line.rstrip("\r\n")
-    return stripped.startswith(_GENERATED_STAMP_PREFIX) and stripped.endswith(_GENERATED_STAMP_SUFFIX)
+    return stripped.startswith(_GENERATED_STAMP_PREFIX) and stripped.endswith(
+        _GENERATED_STAMP_SUFFIX
+    )
 
 
 # files whose types the runtime converts natively (plus descriptor.proto:
@@ -84,7 +93,7 @@ _RUNTIME_HANDLED_DESCRIPTORS = {
 }
 _RUNTIME_HANDLED_FILES = frozenset(_RUNTIME_HANDLED_DESCRIPTORS)
 
-_HEADER = f'''\
+_HEADER = f"""\
 {_GENERATED_STAMP}
 
 from __future__ import annotations
@@ -97,7 +106,7 @@ from pydantic import Field as _Field
 
 import protodantic as _pd
 
-'''
+"""
 
 _INIT_SOURCE = _GENERATED_STAMP + "\n"
 
@@ -213,7 +222,9 @@ def _normalized_descriptor_bytes(*, file_proto: descriptor_pb2.FileDescriptorPro
     return normalized.SerializeToString(deterministic=True)
 
 
-def _resolve_proto2_files(*, fdset: descriptor_pb2.FileDescriptorSet, proto2: str) -> frozenset[str]:
+def _resolve_proto2_files(
+    *, fdset: descriptor_pb2.FileDescriptorSet, proto2: str
+) -> frozenset[str]:
     """Names of files to skip under proto2="skip"; under the default "error"
     mode any non-proto3 file raises as before."""
     if proto2 not in ("error", "skip"):
@@ -226,13 +237,12 @@ def _resolve_proto2_files(*, fdset: descriptor_pb2.FileDescriptorSet, proto2: st
         first = non_proto3[0]
         raise NotImplementedError(
             f"{first.name}: protodantic supports proto3 only, "
-            f"got {first.syntax or 'proto2'} (pass proto2=\"skip\" / --proto2 skip "
+            f'got {first.syntax or "proto2"} (pass proto2="skip" / --proto2 skip '
             "to generate only the proto3 files)"
         )
     if len(non_proto3) == len(schema_files):
         raise ValueError(
-            "every schema file is proto2; there are no proto3 files to generate "
-            'with proto2="skip"'
+            'every schema file is proto2; there are no proto3 files to generate with proto2="skip"'
         )
     return frozenset(f.name for f in non_proto3)
 
@@ -269,21 +279,36 @@ def _render_skipped_comment(*, skipped_files: frozenset[str]) -> str:
 def _collect_file_entries(*, file_desc: FileDescriptor) -> list[_Entry]:
     entries: list[_Entry] = []
     for enum_desc in file_desc.enum_types_by_name.values():
-        entries.append(_Entry(kind="enum", desc=enum_desc, base_name=enum_desc.name, package=file_desc.package))
+        entries.append(
+            _Entry(kind="enum", desc=enum_desc, base_name=enum_desc.name, package=file_desc.package)
+        )
     for msg_desc in file_desc.message_types_by_name.values():
-        _collect_message_entries(desc=msg_desc, prefix="", package=file_desc.package, entries=entries)
+        _collect_message_entries(
+            desc=msg_desc, prefix="", package=file_desc.package, entries=entries
+        )
     return entries
 
 
-def _collect_message_entries(*, desc: Descriptor, prefix: str, package: str, entries: list[_Entry]) -> None:
+def _collect_message_entries(
+    *, desc: Descriptor, prefix: str, package: str, entries: list[_Entry]
+) -> None:
     if desc.GetOptions().map_entry:
         return
     base_name = prefix + desc.name
     entries.append(_Entry(kind="message", desc=desc, base_name=base_name, package=package))
     for enum_desc in desc.enum_types:
-        entries.append(_Entry(kind="enum", desc=enum_desc, base_name=f"{base_name}_{enum_desc.name}", package=package))
+        entries.append(
+            _Entry(
+                kind="enum",
+                desc=enum_desc,
+                base_name=f"{base_name}_{enum_desc.name}",
+                package=package,
+            )
+        )
     for nested in desc.nested_types:
-        _collect_message_entries(desc=nested, prefix=base_name + "_", package=package, entries=entries)
+        _collect_message_entries(
+            desc=nested, prefix=base_name + "_", package=package, entries=entries
+        )
 
 
 def _assign_python_names(*, entries: list[_Entry], qualify_packages: bool) -> dict[str, str]:
@@ -367,9 +392,17 @@ class _BaseRenderer:
     def _default(self, *, fd: FieldDescriptor) -> str:
         alias = f'"{fd.name}"' if python_field_name(proto_name=fd.name) != fd.name else None
         if _is_map_field(fd=fd):
-            return f"_Field(default_factory=dict, alias={alias})" if alias else "_Field(default_factory=dict)"
+            return (
+                f"_Field(default_factory=dict, alias={alias})"
+                if alias
+                else "_Field(default_factory=dict)"
+            )
         if fd.is_repeated:
-            return f"_Field(default_factory=list, alias={alias})" if alias else "_Field(default_factory=list)"
+            return (
+                f"_Field(default_factory=list, alias={alias})"
+                if alias
+                else "_Field(default_factory=list)"
+            )
         if fd.has_presence:
             plain = "None"
         elif fd.type == FieldDescriptor.TYPE_ENUM:
@@ -448,7 +481,9 @@ class _BaseRenderer:
     def _render_body(self) -> list[str]:
         parts: list[str] = []
         parts.extend(self._render_enum(desc=e.desc) for e in self._entries if e.kind == "enum")
-        parts.extend(self._render_message(desc=e.desc) for e in self._entries if e.kind == "message")
+        parts.extend(
+            self._render_message(desc=e.desc) for e in self._entries if e.kind == "message"
+        )
         rebuild = self._render_rebuild()
         if rebuild:
             parts.append(rebuild)
@@ -556,7 +591,9 @@ class _TreeGenerator:
                 depth=len(segments) - 1,
                 dep_paths=sorted(module_paths[d] for d in dep_files),
             )
-            renderer = _FileModuleRenderer(entries=entries_by_file[name], py_names=py_names, header=header)
+            renderer = _FileModuleRenderer(
+                entries=entries_by_file[name], py_names=py_names, header=header
+            )
             files["/".join(segments) + ".py"] = renderer.render()
         return files
 
@@ -566,8 +603,7 @@ class _TreeGenerator:
             audit = _render_skipped_comment(skipped_files=skipped_files) + "\n\n"
         return (
             _GENERATED_STAMP + "\n"
-            "\n" + audit +
-            "import base64 as _base64\n"
+            "\n" + audit + "import base64 as _base64\n"
             "\n"
             "import protodantic as _pd\n"
             "\n"

@@ -18,7 +18,6 @@ from unittest.mock import Mock
 
 import pytest
 from click.testing import CliRunner
-
 from google.protobuf import descriptor_pb2
 
 import protodantic
@@ -334,8 +333,12 @@ def test_path_collisions_fail_loudly(tmp_path):
     sanitize-induced collisions."""
     root_a = tmp_path / "coll_a"
     (root_a / "foo").mkdir(parents=True)
-    (root_a / "foo.proto").write_text('syntax = "proto3";\npackage ca;\nmessage A { string v = 1; }\n')
-    (root_a / "foo" / "bar.proto").write_text('syntax = "proto3";\npackage cb;\nmessage B { string v = 1; }\n')
+    (root_a / "foo.proto").write_text(
+        'syntax = "proto3";\npackage ca;\nmessage A { string v = 1; }\n'
+    )
+    (root_a / "foo" / "bar.proto").write_text(
+        'syntax = "proto3";\npackage cb;\nmessage B { string v = 1; }\n'
+    )
     result_a = CliRunner().invoke(main, ["generate", str(root_a), "-o", str(tmp_path / "out_a")])
     assert result_a.exit_code == 1
     combined_a = (result_a.output + result_a.stderr).lower()
@@ -345,8 +348,12 @@ def test_path_collisions_fail_loudly(tmp_path):
 
     root_b = tmp_path / "coll_b"
     root_b.mkdir()
-    (root_b / "foo-bar.proto").write_text('syntax = "proto3";\npackage cc;\nmessage C { string v = 1; }\n')
-    (root_b / "foo_bar.proto").write_text('syntax = "proto3";\npackage cd;\nmessage D { string v = 1; }\n')
+    (root_b / "foo-bar.proto").write_text(
+        'syntax = "proto3";\npackage cc;\nmessage C { string v = 1; }\n'
+    )
+    (root_b / "foo_bar.proto").write_text(
+        'syntax = "proto3";\npackage cd;\nmessage D { string v = 1; }\n'
+    )
     result_b = CliRunner().invoke(main, ["generate", str(root_b), "-o", str(tmp_path / "out_b")])
     assert result_b.exit_code == 1
     combined_b = (result_b.output + result_b.stderr).lower()

@@ -23,23 +23,39 @@ def main() -> None:
 @main.command()
 @click.argument("protos", nargs=-1)
 @click.option(
-    "-I", "--include", "includes", multiple=True, metavar="DIR",
+    "-I",
+    "--include",
+    "includes",
+    multiple=True,
+    metavar="DIR",
     help="Additional import search path (repeatable, .proto inputs only).",
 )
 @click.option(
-    "--from-package", "from_package", metavar="PACKAGE", default=None,
+    "--from-package",
+    "from_package",
+    metavar="PACKAGE",
+    default=None,
     help="Generate from an installed protobuf (_pb2) package by import name.",
 )
 @click.option(
-    "-o", "--out", "out", required=True, metavar="PATH",
+    "-o",
+    "--out",
+    "out",
+    required=True,
+    metavar="PATH",
     help="Output: a .py module file, or a package directory for tree layout.",
 )
 @click.option(
-    "--layout", type=click.Choice(["module", "tree"]), default=None,
+    "--layout",
+    type=click.Choice(["module", "tree"]),
+    default=None,
     help="Override the input-shape default (files -> module, directory/package -> tree).",
 )
 @click.option(
-    "--proto2", "proto2", type=click.Choice(["error", "skip"]), default="error",
+    "--proto2",
+    "proto2",
+    type=click.Choice(["error", "skip"]),
+    default="error",
     help="Mixed-syntax policy: error (default) rejects proto2 files; skip generates "
     "only the proto3 subset (proto3->proto2 references still fail loudly).",
 )
@@ -154,7 +170,9 @@ def _write_tree(*, out_dir: Path, files: dict[str, str]) -> None:
     # generators can't race over shared names
     out_dir.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(
-        tempfile.mkdtemp(prefix=f"{out_dir.name}.", suffix=".protodantic-staging", dir=out_dir.parent)
+        tempfile.mkdtemp(
+            prefix=f"{out_dir.name}.", suffix=".protodantic-staging", dir=out_dir.parent
+        )
     )
     try:
         for rel_path, source in sorted(files.items()):

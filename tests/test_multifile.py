@@ -28,7 +28,7 @@ def test_imported_dependencies_generated_transitively(generate):
 def test_same_message_name_across_packages(generate):
     """alpha.Thing and beta.Thing coexist in one generated module; each can be
     looked up by its proto full name and round-trips independently."""
-    mod = generate("collision_a.proto", "collision_b.proto")
+    generate("collision_a.proto", "collision_b.proto")
     alpha_thing = model_for("alpha.Thing")
     beta_thing = model_for("beta.Thing")
     assert alpha_thing is not beta_thing

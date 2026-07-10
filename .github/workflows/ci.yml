@@ -30,3 +30,39 @@ jobs:
 
       - name: Run tests
         run: uv run pytest tests/ -v
+
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group quality
+
+      - name: Lint
+        run: uv run ruff check src tests checks
+
+      - name: Check formatting
+        run: uv run ruff format --check src tests checks
+
+      - name: Check generated-model typing
+        run: uv run python checks/typing_smoke.py
+
+      - name: Check coverage
+        run: uv run pytest tests/ -q --cov=protodantic --cov-report=term-missing
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Smoke-test installed wheel
+        run: |
+          uv venv --python 3.13 .wheel-smoke
+          uv pip install --python .wheel-smoke/bin/python dist/*.whl
+          .wheel-smoke/bin/python -c "import protodantic; print(protodantic.__version__)"
+          .wheel-smoke/bin/protodantic --version

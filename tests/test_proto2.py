@@ -20,14 +20,10 @@ import protodantic
 from protodantic import compile_fdset, generate_source, generate_tree
 from protodantic.cli import main
 
-_P2_LEGACY = (
-    'syntax = "proto2";\npackage legacy;\n'
-    "message OldRecord { optional string id = 1; }\n"
-)
+_P2_LEGACY = 'syntax = "proto2";\npackage legacy;\nmessage OldRecord { optional string id = 1; }\n'
 _P3_CLEAN = 'syntax = "proto3";\npackage app;\nmessage Fresh { string name = 1; }\n'
 _P3_IMPORT_ONLY = (
-    'syntax = "proto3";\npackage app;\nimport "legacy.proto";\n'
-    "message Fresh { string name = 1; }\n"
+    'syntax = "proto3";\npackage app;\nimport "legacy.proto";\nmessage Fresh { string name = 1; }\n'
 )
 _P3_BRIDGED = (
     'syntax = "proto3";\npackage app;\nimport "legacy.proto";\n'
@@ -143,9 +139,7 @@ def test_cli_proto2_skip_flag(tmp_path):
     assert "proto2" in (default_run.output + default_run.stderr)
 
     out = tmp_path / "out_b"
-    skip_run = CliRunner().invoke(
-        main, ["generate", str(root), "--proto2", "skip", "-o", str(out)]
-    )
+    skip_run = CliRunner().invoke(main, ["generate", str(root), "--proto2", "skip", "-o", str(out)])
     assert skip_run.exit_code == 0, skip_run.output
     assert (out / "app.py").exists()
     assert not (out / "legacy.py").exists()
@@ -164,11 +158,19 @@ def test_reflection_mixed_package_skip(tmp_path):
     site = tmp_path / "site"
     site.mkdir()
     wkt = str(importlib.resources.files("grpc_tools") / "_proto")
-    assert protoc.main([
-        "protoc", f"-I{proto_root}", f"-I{wkt}", f"--python_out={site}",
-        str(proto_root / "mixedorg" / "legacy.proto"),
-        str(proto_root / "mixedorg" / "app.proto"),
-    ]) == 0
+    assert (
+        protoc.main(
+            [
+                "protoc",
+                f"-I{proto_root}",
+                f"-I{wkt}",
+                f"--python_out={site}",
+                str(proto_root / "mixedorg" / "legacy.proto"),
+                str(proto_root / "mixedorg" / "app.proto"),
+            ]
+        )
+        == 0
+    )
     (site / "mixedorg" / "__init__.py").write_text("")
 
     modules_before = set(sys.modules)
@@ -180,5 +182,9 @@ def test_reflection_mixed_package_skip(tmp_path):
         assert "mixedorg/legacy.proto" in source  # named in the audit comment
     finally:
         sys.path.remove(str(site))
-        for name in [m for m in sys.modules if m not in modules_before and (m == "mixedorg" or m.startswith("mixedorg."))]:
+        for name in [
+            m
+            for m in sys.modules
+            if m not in modules_before and (m == "mixedorg" or m.startswith("mixedorg."))
+        ]:
             del sys.modules[name]
