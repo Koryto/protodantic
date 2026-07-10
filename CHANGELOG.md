@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-07-10
+
+### Added
+
+- Mixed proto2/proto3 packages: `--proto2 skip` (API: `proto2="skip"`) generates only the proto3 subset of a mixed-syntax input — common in enterprise proto repos. Skipped files stay in the embedded descriptor set for import resolution and are named in a deterministic audit comment; any proto3 field referencing a type from a skipped proto2 file fails loudly listing every coupling point (protoc itself already forbids proto3 fields of proto2 enum types). The default remains rejecting proto2 with a clear error; mixed inputs include a hint about the flag, while all-proto2 inputs do not suggest an unusable skip. Protobuf Editions remain unsupported and are never mistaken for proto2 files to skip.
+
 ## [0.1.2] - 2026-07-06
 
 ### Added

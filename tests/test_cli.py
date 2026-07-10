@@ -27,8 +27,7 @@ def test_cli_include_path(tmp_path):
     schema_dir.mkdir()
     include_dir.mkdir()
     (include_dir / "common.proto").write_text(
-        'syntax = "proto3";\npackage test.shared;\n'
-        "message Money { int64 units = 1; }\n",
+        'syntax = "proto3";\npackage test.shared;\nmessage Money { int64 units = 1; }\n',
         encoding="utf-8",
     )
     orders_proto = schema_dir / "orders.proto"
@@ -39,9 +38,7 @@ def test_cli_include_path(tmp_path):
     )
     out = tmp_path / "orders.py"
 
-    without_include = CliRunner().invoke(
-        main, ["generate", str(orders_proto), "-o", str(out)]
-    )
+    without_include = CliRunner().invoke(main, ["generate", str(orders_proto), "-o", str(out)])
     assert without_include.exit_code == 1
     assert not out.exists()
 
@@ -59,7 +56,13 @@ def test_cli_multiple_protos(tmp_path):
     out = tmp_path / "combined.py"
     result = CliRunner().invoke(
         main,
-        ["generate", str(PROTO_DIR / "common.proto"), str(PROTO_DIR / "wire.proto"), "-o", str(out)],
+        [
+            "generate",
+            str(PROTO_DIR / "common.proto"),
+            str(PROTO_DIR / "wire.proto"),
+            "-o",
+            str(out),
+        ],
     )
     assert result.exit_code == 0
     text = out.read_text(encoding="utf-8")

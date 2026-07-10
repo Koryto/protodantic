@@ -50,15 +50,17 @@ _WRAPPER_TYPES = frozenset(
 _MODELS_BY_POOL: dict[tuple[Any, str], type[ProtoModel]] = {}
 _MODELS_BY_NAME: dict[str, type[ProtoModel]] = {}
 
-_RESERVED_NAMES = frozenset({
-    "proto_class",
-    "to_proto",
-    "to_proto_bytes",
-    "to_proto_json",
-    "from_proto",
-    "from_proto_bytes",
-    "from_proto_json",
-})
+_RESERVED_NAMES = frozenset(
+    {
+        "proto_class",
+        "to_proto",
+        "to_proto_bytes",
+        "to_proto_json",
+        "from_proto",
+        "from_proto_bytes",
+        "from_proto_json",
+    }
+)
 
 
 def python_field_name(*, proto_name: str) -> str:
@@ -79,9 +81,7 @@ def model_for(full_name: str) -> type[ProtoModel]:
     try:
         return _MODELS_BY_NAME[full_name]
     except KeyError:
-        raise KeyError(
-            f"no generated model imported for proto type {full_name!r}"
-        ) from None
+        raise KeyError(f"no generated model imported for proto type {full_name!r}") from None
 
 
 def load_pool(fdset_bytes: bytes) -> descriptor_pool.DescriptorPool:
@@ -108,10 +108,7 @@ class OpenEnum(enum.IntEnum):
 
 
 def _is_map(*, fd: FieldDescriptor) -> bool:
-    return (
-        fd.type == FieldDescriptor.TYPE_MESSAGE
-        and fd.message_type.GetOptions().map_entry
-    )
+    return fd.type == FieldDescriptor.TYPE_MESSAGE and fd.message_type.GetOptions().map_entry
 
 
 def _scalar_to_proto(*, value: Any) -> Any:
@@ -175,9 +172,7 @@ def _unpack_any(*, msg: Message, pool: Any) -> ProtoModel:
     type_name = msg.type_url.rpartition("/")[2]
     model_cls = _resolve_model(full_name=type_name, pool=pool)
     if model_cls is None:
-        raise LookupError(
-            f"cannot unpack Any: no generated model imported for {type_name!r}"
-        )
+        raise LookupError(f"cannot unpack Any: no generated model imported for {type_name!r}")
     inner = model_cls._new_message()
     if not msg.Unpack(inner):
         raise ValueError(f"failed to unpack Any containing {type_name!r}")

@@ -2,11 +2,12 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches: [master, development]
 
 permissions:
   contents: read
+
+env:
+  UV_LOCKED: "1"
 
 jobs:
   test:
@@ -17,10 +18,10 @@ jobs:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
@@ -30,3 +31,39 @@ jobs:
 
       - name: Run tests
         run: uv run pytest tests/ -v
+
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group quality
+
+      - name: Lint
+        run: uv run ruff check src tests checks
+
+      - name: Check formatting
+        run: uv run ruff format --check src tests checks
+
+      - name: Check generated-model typing
+        run: uv run python checks/typing_smoke.py
+
+      - name: Check coverage
+        run: uv run pytest tests/ -q --cov=protodantic --cov-report=term-missing
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Smoke-test installed wheel
+        run: |
+          uv venv --python 3.13 .wheel-smoke
+          uv pip install --python .wheel-smoke/bin/python dist/*.whl
+          .wheel-smoke/bin/python -c "import protodantic; print(protodantic.__version__)"
+          .wheel-smoke/bin/protodantic --version

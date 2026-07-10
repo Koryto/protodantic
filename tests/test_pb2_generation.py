@@ -124,8 +124,13 @@ def _build_pb2_site(*, tmp_path: Path, package: str, with_init: bool) -> Path:
     site = tmp_path / "site"
     site.mkdir()
     wkt = str(importlib.resources.files("grpc_tools") / "_proto")
-    args = ["protoc", f"-I{proto_root}", f"-I{wkt}", f"--python_out={site}",
-            str(proto_root / package / "mini.proto")]
+    args = [
+        "protoc",
+        f"-I{proto_root}",
+        f"-I{wkt}",
+        f"--python_out={site}",
+        str(proto_root / package / "mini.proto"),
+    ]
     assert protoc.main(args) == 0
     (site / package / "evil_helper.py").write_text("raise RuntimeError('must not be imported')\n")
     # the realistic adjacent hazard: grpc stubs live NEXT to _pb2 modules and
@@ -185,10 +190,17 @@ def test_reflection_supports_nested_namespace_packages(tmp_path):
     )
     site = tmp_path / "site"
     site.mkdir()
-    assert protoc.main([
-        "protoc", f"-I{proto_root}", f"--python_out={site}",
-        str(proto_root / "acme" / "contracts" / "foo.proto"),
-    ]) == 0
+    assert (
+        protoc.main(
+            [
+                "protoc",
+                f"-I{proto_root}",
+                f"--python_out={site}",
+                str(proto_root / "acme" / "contracts" / "foo.proto"),
+            ]
+        )
+        == 0
+    )
     # no __init__.py anywhere — nested namespace package
 
     modules_before = set(sys.modules)
@@ -231,11 +243,18 @@ def test_reflection_fails_loudly_on_broken_subpackage(tmp_path):
     )
     site = tmp_path / "site"
     site.mkdir()
-    assert protoc.main([
-        "protoc", f"-I{proto_root}", f"--python_out={site}",
-        str(proto_root / "badpkg" / "mini.proto"),
-        str(proto_root / "badpkg" / "sub" / "other.proto"),
-    ]) == 0
+    assert (
+        protoc.main(
+            [
+                "protoc",
+                f"-I{proto_root}",
+                f"--python_out={site}",
+                str(proto_root / "badpkg" / "mini.proto"),
+                str(proto_root / "badpkg" / "sub" / "other.proto"),
+            ]
+        )
+        == 0
+    )
     (site / "badpkg" / "__init__.py").write_text("")
     (site / "badpkg" / "sub" / "__init__.py").write_text("raise ImportError('boom')\n")
 
@@ -289,9 +308,17 @@ def test_layout_follows_descriptor_names_not_python_layout(tmp_path):
     )
     build = tmp_path / "build"
     build.mkdir()
-    assert protoc.main(
-        ["protoc", f"-I{proto_root}", f"--python_out={build}", str(proto_root / "wire" / "format.proto")]
-    ) == 0
+    assert (
+        protoc.main(
+            [
+                "protoc",
+                f"-I{proto_root}",
+                f"--python_out={build}",
+                str(proto_root / "wire" / "format.proto"),
+            ]
+        )
+        == 0
+    )
 
     # bury the compiled module two container levels deep — python layout
     # (orgbundle.inner.wire) deliberately disagrees with proto path (wire/)
@@ -353,8 +380,14 @@ def test_cli_from_package_and_positional_are_exclusive(myorg_pb2, tmp_path):
     specific contract message (not a generic usage error)."""
     result = CliRunner().invoke(
         main,
-        ["generate", str(TREE_DIR / "myorg" / "common.proto"), "--from-package", myorg_pb2,
-         "-o", str(tmp_path / "x")],
+        [
+            "generate",
+            str(TREE_DIR / "myorg" / "common.proto"),
+            "--from-package",
+            myorg_pb2,
+            "-o",
+            str(tmp_path / "x"),
+        ],
     )
     assert result.exit_code == 1
     assert "cannot be used together" in (result.output + result.stderr)
@@ -387,7 +420,8 @@ def test_cli_from_package_unknown_package_fails_cleanly(tmp_path):
     """A typo'd package name exits 1 with the name in the message — no
     traceback."""
     result = CliRunner().invoke(
-        main, ["generate", "--from-package", "definitely_not_installed_xyz", "-o", str(tmp_path / "x")]
+        main,
+        ["generate", "--from-package", "definitely_not_installed_xyz", "-o", str(tmp_path / "x")],
     )
     assert result.exit_code == 1
     assert "definitely_not_installed_xyz" in (result.output + result.stderr)

@@ -23,20 +23,41 @@ def main() -> None:
 @main.command()
 @click.argument("protos", nargs=-1)
 @click.option(
-    "-I", "--include", "includes", multiple=True, metavar="DIR",
+    "-I",
+    "--include",
+    "includes",
+    multiple=True,
+    metavar="DIR",
     help="Additional import search path (repeatable, .proto inputs only).",
 )
 @click.option(
-    "--from-package", "from_package", metavar="PACKAGE", default=None,
+    "--from-package",
+    "from_package",
+    metavar="PACKAGE",
+    default=None,
     help="Generate from an installed protobuf (_pb2) package by import name.",
 )
 @click.option(
-    "-o", "--out", "out", required=True, metavar="PATH",
+    "-o",
+    "--out",
+    "out",
+    required=True,
+    metavar="PATH",
     help="Output: a .py module file, or a package directory for tree layout.",
 )
 @click.option(
-    "--layout", type=click.Choice(["module", "tree"]), default=None,
+    "--layout",
+    type=click.Choice(["module", "tree"]),
+    default=None,
     help="Override the input-shape default (files -> module, directory/package -> tree).",
+)
+@click.option(
+    "--proto2",
+    "proto2",
+    type=click.Choice(["error", "skip"]),
+    default="error",
+    help="Mixed-syntax policy: error (default) rejects proto2 files; skip generates "
+    "only the proto3 subset (proto3->proto2 references still fail loudly).",
 )
 def generate(
     protos: tuple[str, ...],
@@ -44,6 +65,7 @@ def generate(
     from_package: str | None,
     out: str,
     layout: str | None,
+    proto2: str,
 ) -> None:
     """Generate pydantic models from .proto files, a directory of them, or an
     installed _pb2 package."""
@@ -93,13 +115,13 @@ def generate(
             _reject_non_proto_inputs(protos=protos)
             fdset = compile_fdset(protos=protos, includes=includes)
         if resolved_layout == "module":
-            source = generate_source(fdset_bytes=fdset)
+            source = generate_source(fdset_bytes=fdset, proto2=proto2)
             out_path = Path(out)
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(source, encoding="utf-8")
             click.echo(f"wrote {out_path}")
         else:
-            files = generate_tree(fdset_bytes=fdset)
+            files = generate_tree(fdset_bytes=fdset, proto2=proto2)
             _write_tree(out_dir=Path(out), files=files)
             click.echo(f"wrote {len(files)} files under {out}")
     except (RuntimeError, NotImplementedError, ValueError, OSError, ImportError) as exc:
@@ -148,7 +170,9 @@ def _write_tree(*, out_dir: Path, files: dict[str, str]) -> None:
     # generators can't race over shared names
     out_dir.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(
-        tempfile.mkdtemp(prefix=f"{out_dir.name}.", suffix=".protodantic-staging", dir=out_dir.parent)
+        tempfile.mkdtemp(
+            prefix=f"{out_dir.name}.", suffix=".protodantic-staging", dir=out_dir.parent
+        )
     )
     try:
         for rel_path, source in sorted(files.items()):

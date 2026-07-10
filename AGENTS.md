@@ -1,6 +1,6 @@
 # protodantic — agent guide
 
-Bidirectional bridge between Protocol Buffers and Pydantic. Distribution name `protodantic-py`, import name `protodantic`. proto3 only, by design. Read this before changing anything: the project runs on a small set of hard conventions, and code review enforces them strictly — working code that violates them gets rejected.
+Bidirectional bridge between Protocol Buffers and Pydantic. Distribution name `protodantic-py`, import name `protodantic`. Model generation is proto3 only, by design; mixed packages may explicitly skip proto2 files. Read this before changing anything: the project runs on a small set of hard conventions, and code review enforces them strictly — working code that violates them gets rejected.
 
 ## Architecture
 
@@ -20,9 +20,9 @@ The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` 
 ## Philosophy (non-negotiable)
 
 1. **The test suite is the specification.** Every supported behavior exists as a use-case test with a "USE CASE" style docstring. Workflow is red/green: write the failing spec test first, run it to confirm it fails *for the intended reason*, then implement, then confirm green. A red test in the suite is an accepted roadmap item, not a broken build.
-2. **Fail loudly; no magic.** proto2 input → `NotImplementedError`. Name collisions (flattened types, escaped enum members, module paths) → `ValueError` naming the culprits and telling the user what to rename. Wrong message type in `from_proto` → `TypeError`. Unknown `Any` type URL → `LookupError`. Unknown field names at construction → rejected (`extra="forbid"`). Never emit silently-wrong data or auto-disambiguate with positional suffixes. Exactly two automatic renames are allowed, both pure functions of the name alone (never dependent on what else exists in the schema): (a) the trailing-underscore escape for python keywords/reserved names (`class` → `class_`), applied to fields, type names, and enum members; (b) module-path normalization for tree output — per segment, characters outside `[A-Za-z0-9_]` become `_` (1:1, no collapsing), a leading digit gains a `_` prefix, and keywords/reserved stems (`__init__`, `_descriptors`) get the trailing underscore. Post-rename collisions always fail loudly.
+2. **Fail loudly; no magic.** proto2 input → `NotImplementedError` by default; `--proto2 skip` is the conscious opt-in for mixed-syntax packages — it generates only the proto3 subset, keeps skipped files in the pool for import resolution, names them in an audit comment, and fails loudly on any proto3→proto2 type reference. Name collisions (flattened types, escaped enum members, module paths) → `ValueError` naming the culprits and telling the user what to rename. Wrong message type in `from_proto` → `TypeError`. Unknown `Any` type URL → `LookupError`. Unknown field names at construction → rejected (`extra="forbid"`). Never emit silently-wrong data or auto-disambiguate with positional suffixes. Exactly two automatic renames are allowed, both pure functions of the name alone (never dependent on what else exists in the schema): (a) the trailing-underscore escape for python keywords/reserved names (`class` → `class_`), applied to fields, type names, and enum members; (b) module-path normalization for tree output — per segment, characters outside `[A-Za-z0-9_]` become `_` (1:1, no collapsing), a leading digit gains a `_` prefix, and keywords/reserved stems (`__init__`, `_descriptors`) get the trailing underscore. Post-rename collisions always fail loudly.
 3. **Validation is the product.** Models validate at construction *and* on assignment, and assignment is atomic: a rejected mutation must leave the model exactly as it was. If you add a validator, prove atomicity in a test.
-4. **Scope decisions belong to the maintainer.** If "should we support X?" has no clear answer in the tests or this file, raise it as a question before implementing. Precedents: proto2 was consciously dropped; `Any` consciously maps to `typing.Any` with registry pack/unpack.
+4. **Scope decisions belong to the maintainer.** If "should we support X?" has no clear answer in the tests or this file, raise it as a question before implementing. Precedents: proto2 model generation was consciously dropped, while mixed packages may explicitly skip proto2 files; `Any` consciously maps to `typing.Any` with registry pack/unpack.
 
 ## Semantics ledger (do not regress; each line is pinned by tests)
 
@@ -57,7 +57,7 @@ The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` 
 
 ## Roadmap context (shapes what "don't block the future" means)
 
-- **0.1.2 (current)** — pydantic code generation from `.proto` files, directories, or installed `_pb2` packages, with lossless protobuf round-trips and direct `_pb2` interop.
+- **0.1.3 (current)** — mixed proto2/proto3 packages can explicitly skip proto2 files while generating a complete, audited proto3 subset.
 - **0.2.x — brownfield**: reverse schema codegen — pydantic models → `.proto`. The genuinely new direction (pydantic sources as input). Weigh brownfield adoption at least as high as greenfield polish.
 - **0.3.0 — performance**: benchmark suite first (vs `json.loads`+pydantic, raw `_pb2`, betterproto) — **benchmarks before perf claims** — then cached field plans and trusted-construction fast paths. The conversion internals are deliberately unconstrained by public API; keep it that way.
 - gRPC service stubs are permanently out of scope: protodantic is a message layer.

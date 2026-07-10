@@ -22,9 +22,7 @@ def _import_source(source: str, name: str, tmp_path):
 def test_registry_last_import_wins(tmp_path):
     """Importing a duplicate proto type replaces the global registry target."""
     proto = tmp_path / "regsem.proto"
-    proto.write_text(
-        'syntax = "proto3";\npackage test.regsem;\nmessage Token { string v = 1; }\n'
-    )
+    proto.write_text('syntax = "proto3";\npackage test.regsem;\nmessage Token { string v = 1; }\n')
     source = generate_source(compile_fdset([str(proto)]))
 
     first = _import_source(source, "regsem_first", tmp_path)
@@ -59,9 +57,7 @@ def test_plain_subclass_does_not_hijack_registry(tmp_path):
     """Subclassing a generated model (e.g. to add validators) must NOT change
     what from_proto/model_for resolve — registration is not inherited."""
     proto = tmp_path / "subreg.proto"
-    proto.write_text(
-        'syntax = "proto3";\npackage test.subreg;\nmessage Badge { string v = 1; }\n'
-    )
+    proto.write_text('syntax = "proto3";\npackage test.subreg;\nmessage Badge { string v = 1; }\n')
     source = generate_source(compile_fdset([str(proto)]))
     mod = _import_source(source, "subreg_gen", tmp_path)
 
@@ -75,9 +71,7 @@ def test_subclass_registers_by_explicit_redeclaration(tmp_path):
     """Opt-in: a subclass that re-declares __proto_full_name__ takes over
     resolution for that proto type (deliberate, visible in the class body)."""
     proto = tmp_path / "optin.proto"
-    proto.write_text(
-        'syntax = "proto3";\npackage test.optin;\nmessage Seal { string v = 1; }\n'
-    )
+    proto.write_text('syntax = "proto3";\npackage test.optin;\nmessage Seal { string v = 1; }\n')
     source = generate_source(compile_fdset([str(proto)]))
     mod = _import_source(source, "optin_gen", tmp_path)
 
