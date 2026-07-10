@@ -233,12 +233,27 @@ def _resolve_proto2_files(
     non_proto3 = [f for f in schema_files if f.syntax != "proto3"]
     if not non_proto3:
         return frozenset()
+    # the skip flag is proto2-specific: editions (or anything newer) must
+    # error in BOTH modes, never be skipped under a mislabeled audit trail
+    unsupported = [f for f in non_proto3 if f.syntax not in ("", "proto2")]
+    if unsupported:
+        first = unsupported[0]
+        raise NotImplementedError(
+            f"{first.name}: protodantic supports proto3 only, got {first.syntax}"
+        )
     if proto2 == "error":
         first = non_proto3[0]
+        count_note = f" ({len(non_proto3)} proto2 files total)" if len(non_proto3) > 1 else ""
+        # only advertise the flag when a proto3 subset exists to generate —
+        # on an all-proto2 input the advice would immediately fail
+        hint = (
+            ' (pass proto2="skip" / --proto2 skip to generate only the proto3 files)'
+            if len(non_proto3) < len(schema_files)
+            else ""
+        )
         raise NotImplementedError(
             f"{first.name}: protodantic supports proto3 only, "
-            f'got {first.syntax or "proto2"} (pass proto2="skip" / --proto2 skip '
-            "to generate only the proto3 files)"
+            f"got {first.syntax or 'proto2'}{count_note}{hint}"
         )
     if len(non_proto3) == len(schema_files):
         raise ValueError(

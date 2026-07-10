@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
+from google.protobuf import descriptor_pb2
 from grpc_tools import protoc
 
 import protodantic
@@ -56,10 +57,24 @@ def test_proto2_is_rejected_with_clear_error(generate):
 
 
 def test_mixed_package_default_still_errors(tmp_path):
-    """Default policy applies to mixed packages too — skipping is opt-in."""
+    """Default policy applies to mixed packages too — skipping is opt-in, and
+    the error suggests the flag because a proto3 subset exists to generate."""
     fdset = _mixed_fdset(tmp_path=tmp_path, p3_source=_P3_CLEAN)
-    with pytest.raises(NotImplementedError, match="proto2"):
+    with pytest.raises(NotImplementedError, match="proto2") as exc_info:
         generate_source(fdset)
+    assert "skip" in str(exc_info.value)
+
+
+def test_pure_proto2_error_omits_skip_hint(tmp_path):
+    """An all-proto2 input must NOT be told to pass --proto2 skip — following
+    that advice would immediately fail with 'no proto3 files'."""
+    root = tmp_path / "protos"
+    root.mkdir()
+    (root / "legacy.proto").write_text(_P2_LEGACY)
+    fdset = compile_fdset([str(root)])
+    with pytest.raises(NotImplementedError, match="proto2") as exc_info:
+        generate_source(fdset)
+    assert "skip" not in str(exc_info.value)
 
 
 def test_skip_mode_generates_proto3_subset(tmp_path):
@@ -118,6 +133,25 @@ def test_skip_mode_with_only_proto2_errors(tmp_path):
     fdset = compile_fdset([str(root)])
     with pytest.raises(ValueError, match="proto3"):
         generate_source(fdset, proto2="skip")
+
+
+def test_editions_files_error_even_under_skip(tmp_path):
+    """proto2="skip" is proto2-specific: an editions file (protobuf's future
+    syntax) still errors under both modes — skipping it would mislabel the
+    audit trail and silently drop schemas the flag was never about."""
+    fdset = descriptor_pb2.FileDescriptorSet()
+    future = fdset.file.add()
+    future.name = "future.proto"
+    future.package = "future"
+    future.syntax = "editions"
+    future.edition = descriptor_pb2.Edition.EDITION_2023
+    current = fdset.file.add()
+    current.name = "now.proto"
+    current.package = "now"
+    current.syntax = "proto3"
+    for mode in ("error", "skip"):
+        with pytest.raises(NotImplementedError, match="editions"):
+            generate_source(fdset.SerializeToString(), proto2=mode)
 
 
 def test_invalid_proto2_mode_rejected(tmp_path):
