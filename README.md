@@ -139,7 +139,7 @@ If several imported generated modules define the same proto type, the registry b
 
 ## Status & roadmap
 
-Requires Python ≥ 3.11. proto3 only by design (proto2 input is rejected with a clear error). The full supported-behavior spec lives in [tests/](tests/) — every test documents one use case. Documented policies: unknown fields are dropped when a model re-serializes (the model is the source of truth), and naive datetimes are interpreted as UTC.
+Requires Python ≥ 3.11. proto3 only by design — proto2 input is rejected with a clear error, but mixed proto2/proto3 packages (common in enterprise repos) can opt into `--proto2 skip` to generate the proto3 subset: skipped files are named in an audit comment, and any proto3 field depending on a proto2 type fails loudly instead of generating a hole. The full supported-behavior spec lives in [tests/](tests/) — every test documents one use case. Documented policies: unknown fields are dropped when a model re-serializes (the model is the source of truth), and naive datetimes are interpreted as UTC.
 
 - **0.1.2 (current)** — pydantic code generation from `.proto` files, directories, or installed `_pb2` packages, with lossless protobuf round-trips and direct `_pb2` interop.
 - **0.2.x — brownfield** — reverse schema codegen: pydantic models → `.proto`.

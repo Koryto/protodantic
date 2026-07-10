@@ -124,17 +124,19 @@ class _Entry(NamedTuple):
     package: str
 
 
-def generate_source(fdset_bytes: bytes) -> str:
+def generate_source(fdset_bytes: bytes, *, proto2: str = "error") -> str:
     """Render one python module with pydantic models for every message in the
-    serialized FileDescriptorSet."""
-    return _ModuleGenerator(fdset_bytes=fdset_bytes).render()
+    serialized FileDescriptorSet. proto2="skip" generates only the proto3
+    subset of a mixed-syntax set (proto3->proto2 references fail loudly)."""
+    return _ModuleGenerator(fdset_bytes=fdset_bytes, proto2=proto2).render()
 
 
-def generate_tree(fdset_bytes: bytes) -> dict[str, str]:
+def generate_tree(fdset_bytes: bytes, *, proto2: str = "error") -> dict[str, str]:
     """Render a python package tree (one module per proto file, mirroring the
     proto file paths) for every message in the serialized FileDescriptorSet.
-    Returns a mapping of posix-relative module paths to source text."""
-    return _TreeGenerator(fdset_bytes=fdset_bytes).render()
+    Returns a mapping of posix-relative module paths to source text. proto2
+    behaves as in generate_source."""
+    return _TreeGenerator(fdset_bytes=fdset_bytes, proto2=proto2).render()
 
 
 def _is_runtime_handled_file(*, file_name: str) -> bool:
@@ -211,15 +213,57 @@ def _normalized_descriptor_bytes(*, file_proto: descriptor_pb2.FileDescriptorPro
     return normalized.SerializeToString(deterministic=True)
 
 
-def _reject_non_proto3(*, fdset: descriptor_pb2.FileDescriptorSet) -> None:
-    for file_proto in fdset.file:
-        if _is_runtime_handled_file(file_name=file_proto.name):
+def _resolve_proto2_files(*, fdset: descriptor_pb2.FileDescriptorSet, proto2: str) -> frozenset[str]:
+    """Names of files to skip under proto2="skip"; under the default "error"
+    mode any non-proto3 file raises as before."""
+    if proto2 not in ("error", "skip"):
+        raise ValueError(f"proto2 mode must be 'error' or 'skip', got {proto2!r}")
+    schema_files = [f for f in fdset.file if not _is_runtime_handled_file(file_name=f.name)]
+    non_proto3 = [f for f in schema_files if f.syntax != "proto3"]
+    if not non_proto3:
+        return frozenset()
+    if proto2 == "error":
+        first = non_proto3[0]
+        raise NotImplementedError(
+            f"{first.name}: protodantic supports proto3 only, "
+            f"got {first.syntax or 'proto2'} (pass proto2=\"skip\" / --proto2 skip "
+            "to generate only the proto3 files)"
+        )
+    if len(non_proto3) == len(schema_files):
+        raise ValueError(
+            "every schema file is proto2; there are no proto3 files to generate "
+            'with proto2="skip"'
+        )
+    return frozenset(f.name for f in non_proto3)
+
+
+def _reject_proto2_bridges(*, entries: list[_Entry], skipped_files: frozenset[str]) -> None:
+    """proto3 fields embedding types from skipped proto2 files make the proto3
+    subset non-generatable on its own — name every coupling point. (protoc
+    already forbids proto3 fields of proto2 enum types, so message embeds are
+    the only crossable reference.)"""
+    bridges = []
+    for entry in entries:
+        if entry.kind != "message":
             continue
-        if file_proto.syntax != "proto3":
-            raise NotImplementedError(
-                f"{file_proto.name}: protodantic supports proto3 only, "
-                f"got {file_proto.syntax or 'proto2'}"
-            )
+        for fd in entry.desc.fields:
+            for type_desc in _field_type_descriptors(fd=fd):
+                if type_desc.file.name in skipped_files:
+                    bridges.append(
+                        f"{entry.desc.full_name}.{fd.name} -> {type_desc.full_name} "
+                        f"({type_desc.file.name})"
+                    )
+    if bridges:
+        raise ValueError(
+            "proto3 fields reference types from skipped proto2 files: "
+            + "; ".join(sorted(bridges))
+            + ". The proto3 subset cannot be generated standalone; migrate these "
+            "types to proto3 or generate without skipping."
+        )
+
+
+def _render_skipped_comment(*, skipped_files: frozenset[str]) -> str:
+    return '# proto2 files skipped (proto2="skip"): ' + ", ".join(sorted(skipped_files))
 
 
 def _collect_file_entries(*, file_desc: FileDescriptor) -> list[_Entry]:
@@ -420,25 +464,29 @@ class _ModuleGenerator(_BaseRenderer):
     """Single-module output: every message in the set, package-qualified on
     cross-package name collisions, descriptors embedded inline."""
 
-    def __init__(self, *, fdset_bytes: bytes) -> None:
+    def __init__(self, *, fdset_bytes: bytes, proto2: str) -> None:
         self._fdset_bytes = fdset_bytes
         self._fdset = descriptor_pb2.FileDescriptorSet.FromString(fdset_bytes)
         self._pool = load_pool(fdset_bytes)
+        self._proto2 = proto2
         self._entries = []
         self._py_names = {}
 
     def render(self) -> str:
         _reject_shadowed_runtime_files(fdset=self._fdset)
-        _reject_non_proto3(fdset=self._fdset)
+        skipped = _resolve_proto2_files(fdset=self._fdset, proto2=self._proto2)
         for file_proto in self._fdset.file:
-            if _is_runtime_handled_file(file_name=file_proto.name):
+            if _is_runtime_handled_file(file_name=file_proto.name) or file_proto.name in skipped:
                 continue
             file_desc = self._pool.FindFileByName(file_proto.name)
             self._entries.extend(_collect_file_entries(file_desc=file_desc))
+        _reject_proto2_bridges(entries=self._entries, skipped_files=skipped)
         self._py_names = _assign_python_names(entries=self._entries, qualify_packages=True)
 
         pool_line = f"_POOL = _pd.load_pool(_base64.b64decode(\n{_render_b64_chunks(data=self._fdset_bytes)}\n))\n"
         parts = [_HEADER, pool_line]
+        if skipped:
+            parts.append(_render_skipped_comment(skipped_files=skipped) + "\n")
         parts.extend(self._render_body())
         return "\n\n".join(parts)
 
@@ -460,15 +508,20 @@ class _TreeGenerator:
     from file paths (never proto packages), a single shared descriptor pool,
     and root-anchored relative imports so the tree is relocatable."""
 
-    def __init__(self, *, fdset_bytes: bytes) -> None:
+    def __init__(self, *, fdset_bytes: bytes, proto2: str) -> None:
         self._fdset_bytes = fdset_bytes
         self._fdset = descriptor_pb2.FileDescriptorSet.FromString(fdset_bytes)
         self._pool = load_pool(fdset_bytes)
+        self._proto2 = proto2
 
     def render(self) -> dict[str, str]:
         _reject_shadowed_runtime_files(fdset=self._fdset)
-        _reject_non_proto3(fdset=self._fdset)
-        file_names = [f.name for f in self._fdset.file if not _is_runtime_handled_file(file_name=f.name)]
+        skipped = _resolve_proto2_files(fdset=self._fdset, proto2=self._proto2)
+        file_names = [
+            f.name
+            for f in self._fdset.file
+            if not _is_runtime_handled_file(file_name=f.name) and f.name not in skipped
+        ]
         module_paths = _assign_module_paths(file_names=file_names)
 
         entries_by_file: dict[str, list[_Entry]] = {}
@@ -478,10 +531,14 @@ class _TreeGenerator:
             entries = _collect_file_entries(file_desc=file_desc)
             entries_by_file[name] = entries
             local_names[name] = _assign_python_names(entries=entries, qualify_packages=False)
+        _reject_proto2_bridges(
+            entries=[entry for entries in entries_by_file.values() for entry in entries],
+            skipped_files=skipped,
+        )
 
         files: dict[str, str] = {
             "__init__.py": _INIT_SOURCE,
-            "_descriptors.py": self._render_descriptors(),
+            "_descriptors.py": self._render_descriptors(skipped_files=skipped),
         }
         for segments in module_paths.values():
             for depth in range(1, len(segments)):
@@ -503,10 +560,13 @@ class _TreeGenerator:
             files["/".join(segments) + ".py"] = renderer.render()
         return files
 
-    def _render_descriptors(self) -> str:
+    def _render_descriptors(self, *, skipped_files: frozenset[str]) -> str:
+        audit = ""
+        if skipped_files:
+            audit = _render_skipped_comment(skipped_files=skipped_files) + "\n\n"
         return (
             _GENERATED_STAMP + "\n"
-            "\n"
+            "\n" + audit +
             "import base64 as _base64\n"
             "\n"
             "import protodantic as _pd\n"
