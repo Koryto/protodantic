@@ -79,3 +79,26 @@ def test_subclass_registers_by_explicit_redeclaration(tmp_path):
         __proto_full_name__ = "test.optin.Seal"
 
     assert model_for("test.optin.Seal") is SealPlus
+
+
+def test_takeover_subclass_is_used_for_nested_fields(tmp_path):
+    """The opt-in takeover reaches nested positions: parents parse the field
+    into the subclass — also when the subclass registers after the parent has
+    already been converted once."""
+    proto = tmp_path / "nesttake.proto"
+    proto.write_text(
+        'syntax = "proto3";\npackage test.nesttake;\n'
+        "message Child { string v = 1; }\n"
+        "message Parent { Child child = 1; repeated Child kids = 2; }\n"
+    )
+    mod = _import_source(generate_source(compile_fdset([str(proto)])), "nesttake_gen", tmp_path)
+    data = mod.Parent(child=mod.Child(v="x"), kids=[mod.Child(v="y")]).to_proto_bytes()
+    assert type(mod.Parent.from_proto_bytes(data).child) is mod.Child
+
+    class ChildPlus(mod.Child):
+        __proto_full_name__ = "test.nesttake.Child"
+
+    restored = mod.Parent.from_proto_bytes(data)
+    assert type(restored.child) is ChildPlus
+    assert type(restored.kids[0]) is ChildPlus
+    assert restored.to_proto_bytes() == data

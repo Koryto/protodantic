@@ -149,8 +149,7 @@ If several imported generated modules define the same proto type, the registry b
 
 Requires Python ≥ 3.11. proto3 only by design — proto2 input is rejected with a clear error, but mixed proto2/proto3 packages (common in enterprise repos) can opt into `--proto2 skip` to generate the proto3 subset: skipped files are named in an audit comment, and any proto3 field depending on a proto2 type fails loudly instead of generating a hole. The full supported-behavior spec lives in [tests/](tests/) — every test documents one use case. Documented policies: unknown fields are dropped when a model re-serializes (the model is the source of truth), and naive datetimes are interpreted as UTC.
 
-- **0.1.3 (current)** — mixed proto2/proto3 packages can explicitly skip proto2 files while generating a complete, audited proto3 subset.
-- **0.2.x — brownfield** — reverse schema codegen: pydantic models → `.proto`.
-- **0.3.0 — performance** — benchmark suite (vs `json.loads`+pydantic, raw `_pb2`, betterproto), then cached field plans and trusted-construction fast paths.
+- **0.2.0 (current)** — faster conversion with no API or generated-code change: cached per-class conversion plans, in-place encoding, and a single validation pass per decode. `from_proto()` now follows wire-compat semantics for message objects from other schema revisions. Numbers come from [benchmarks/run.py](benchmarks/run.py), which you can run yourself.
+- **Next** — a drift check for CI (committed generated code against its schema source), and a more meaningful answer to proto2 files in mixed packages than skipping them.
 
 gRPC service stubs are out of scope: protodantic is a message layer.

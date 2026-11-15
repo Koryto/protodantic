@@ -103,3 +103,18 @@ def test_json_roundtrip(demo):
     user = full_user(demo)
     restored = demo.User.from_proto_json(user.to_proto_json())
     assert restored == user
+
+
+def test_wrong_nested_value_fails_at_serialization(demo):
+    """In-place mutation bypasses validation, so serialization is the last
+    guard: a nested value of the wrong type is a TypeError naming the proto
+    type the field expects — never a half-filled message."""
+    wrong_model = full_user(demo)
+    wrong_model.addresses.append(demo.User_Settings(dark_mode=True))
+    with pytest.raises(TypeError, match="demo.Address"):
+        wrong_model.to_proto()
+
+    not_a_model = full_user(demo)
+    not_a_model.places["work"] = {"city": "Lodz"}
+    with pytest.raises(TypeError, match="demo.Address"):
+        not_a_model.to_proto()

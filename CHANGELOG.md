@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-15
+
+### Changed
+
+- Faster conversion with no API or generated-code change — already-generated modules get it by upgrading. On the bundled benchmark (`benchmarks/run.py`, a 200-item nested order), `from_proto_bytes()` is about 3x faster and `to_proto_bytes()` about 4.7x faster than 0.1.3. Per-class conversion plans are cached, nested messages are written in place, and a decode validates once instead of once per nested message.
+
+### Fixed
+
+- `from_proto()` no longer rejects a message object built from a newer revision of the schema. A message from another descriptor pool (a `_pb2` class, an upgraded proto package) now converts exactly as its wire bytes would: fields the model does not know are dropped, fields the message lacks take their defaults — the same wire-compat semantics `to_proto(into=...)` already follows.
+- A nested value of the wrong type introduced by in-place mutation (`user.addresses.append(...)`) fails at serialization with a `TypeError` naming the field and the proto type it expects, instead of an error from inside the protobuf runtime.
+
 ## [0.1.3] - 2026-07-10
 
 ### Added

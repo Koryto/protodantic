@@ -37,6 +37,7 @@ The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` 
 - Reserved runtime-handled `google/protobuf/` file names must match the shipped descriptors. Identical vendored copies are accepted; divergent schemas raise `ValueError`.
 - Reflection (`fdset_from_package`) imports discovered `*_pb2` modules without importing helpers, `_pb2_grpc` stubs, or unrelated subpackages. It supports nested PEP 420 namespace packages and emits descriptors in deterministic dependency order.
 - `to_proto(into=SomeClass)` requires a matching proto full name (`TypeError` naming both otherwise); schema-version skew follows wire-compat semantics — newer fields survive older target classes as protobuf unknown fields.
+- `from_proto(obj)` is `from_proto_bytes(obj.SerializeToString())`: a message object from another pool (a `_pb2` class, another schema revision) crosses over on the wire, so skew follows the same wire-compat semantics — unknown fields are dropped, missing fields take defaults.
 
 ## Code conventions
 
@@ -57,7 +58,6 @@ The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` 
 
 ## Roadmap context (shapes what "don't block the future" means)
 
-- **0.1.3 (current)** — mixed proto2/proto3 packages can explicitly skip proto2 files while generating a complete, audited proto3 subset.
-- **0.2.x — brownfield**: reverse schema codegen — pydantic models → `.proto`. The genuinely new direction (pydantic sources as input). Weigh brownfield adoption at least as high as greenfield polish.
-- **0.3.0 — performance**: benchmark suite first (vs `json.loads`+pydantic, raw `_pb2`, betterproto) — **benchmarks before perf claims** — then cached field plans and trusted-construction fast paths. The conversion internals are deliberately unconstrained by public API; keep it that way.
+- **0.2.0 (current)** — performance: cached per-class conversion plans, in-place encode, single-pass decode. `benchmarks/run.py` is the measure, and **benchmarks before perf claims** holds for any further speedup. The conversion internals are deliberately unconstrained by public API; keep it that way.
+- **Next — adoption**: a drift check for CI (committed generated code against its schema source), and a more meaningful answer to proto2 files in mixed packages than skipping them. The design of both is undecided — raise it before implementing.
 - gRPC service stubs are permanently out of scope: protodantic is a message layer.

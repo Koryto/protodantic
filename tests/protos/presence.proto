@@ -6,6 +6,8 @@ message Inner {
   int32 n = 1;
 }
 
+message Marker {}
+
 message Carrier {
   optional int32 opt_int = 1;
   optional string opt_str = 2;
@@ -18,4 +20,5 @@ message Carrier {
     int64 number = 8;
   }
   int32 plain = 9;
+  Marker marker = 10;
 }

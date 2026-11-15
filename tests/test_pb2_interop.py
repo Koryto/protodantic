@@ -171,3 +171,45 @@ def test_to_proto_into_tolerates_compatible_version_skew(tmp_path):
         assert recovered.priority == 9
     finally:
         sys.modules.pop("skew_v2_models", None)
+
+
+_SKEW_OLD = 'syntax = "proto3";\npackage skewin;\nmessage Event { string id = 1; }\n'
+_SKEW_NEW = (
+    'syntax = "proto3";\npackage skewin;\nmessage Event { string id = 1; int32 priority = 2; }\n'
+)
+
+
+def _skew_side(tmp_path, name, proto_text):
+    """Generated models for one schema version, plus a message class for the
+    same schema from a separate pool (what a _pb2 package would hand over)."""
+    proto = tmp_path / f"{name}.proto"
+    proto.write_text(proto_text)
+    fdset = compile_fdset([str(proto)])
+    module_path = tmp_path / f"{name}_models.py"
+    module_path.write_text(generate_source(fdset), encoding="utf-8")
+    spec = importlib.util.spec_from_file_location(f"{name}_models", module_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    foreign_pool = load_pool(fdset)
+    message_class = message_factory.GetMessageClass(
+        foreign_pool.FindMessageTypeByName("skewin.Event")
+    )
+    return module, message_class
+
+
+def test_from_proto_tolerates_version_skew(tmp_path):
+    """POLICY: from_proto(obj) is from_proto_bytes(obj.SerializeToString()). A
+    message object built from a newer or older revision of the schema follows
+    wire-compat semantics — a proto package upgraded ahead of (or behind) the
+    generated models keeps converting."""
+    old_models, old_cls = _skew_side(tmp_path, "skew_old", _SKEW_OLD)
+    new_models, new_cls = _skew_side(tmp_path, "skew_new", _SKEW_NEW)
+
+    # newer message, older model: the field the model does not know is dropped
+    from_newer = old_models.Event.from_proto(new_cls(id="e-1", priority=9))
+    assert from_newer == old_models.Event(id="e-1")
+
+    # older message, newer model: the field the message lacks takes its default
+    from_older = new_models.Event.from_proto(old_cls(id="e-2"))
+    assert from_older == new_models.Event(id="e-2", priority=0)
