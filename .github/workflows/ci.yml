@@ -52,8 +52,14 @@ jobs:
       - name: Check formatting
         run: uv run ruff format --check src tests checks
 
+      - name: Type-check package source
+        run: uv run mypy src
+
       - name: Check generated-model typing
         run: uv run python checks/typing_smoke.py
+
+      - name: Run benchmarks (smoke)
+        run: uv run python benchmarks/run.py
 
       - name: Check coverage
         run: uv run pytest tests/ -q --cov=protodantic --cov-report=term-missing

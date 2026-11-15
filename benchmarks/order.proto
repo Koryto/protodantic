@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package bench;
+
+import "google/protobuf/timestamp.proto";
+
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  ACTIVE = 1;
+  CLOSED = 2;
+}
+
+message Money {
+  string currency = 1;
+  int64 units = 2;
+  int32 nanos = 3;
+}
+
+message LineItem {
+  string sku = 1;
+  string title = 2;
+  int32 quantity = 3;
+  Money price = 4;
+  repeated string tags = 5;
+  optional string note = 6;
+  double weight = 7;
+  bool taxable = 8;
+}
+
+message Order {
+  int64 id = 1;
+  string customer = 2;
+  Status status = 3;
+  repeated LineItem items = 4;
+  map<string, string> labels = 5;
+  google.protobuf.Timestamp created = 6;
+  Money total = 7;
+  bytes signature = 8;
+  oneof payment {
+    string card_token = 9;
+    string invoice_ref = 10;
+  }
+}
