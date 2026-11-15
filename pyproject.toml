@@ -1,7 +1,7 @@
 [project]
 name = "protodantic-py"
 dynamic = ["version"]
-description = "Bidirectional bridge between Protocol Buffers and Pydantic: generate pydantic models from .proto files with lossless round-trips to proto messages and wire bytes"
+description = "Bidirectional bridge between Protocol Buffers and Pydantic: generate pydantic models from .proto files with round-trips to proto messages and wire bytes"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -25,7 +25,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "pydantic>=2.7",
+    "pydantic>=2.9",
     "protobuf>=6.30",
     "grpcio-tools>=1.66",
     "click>=8.2",

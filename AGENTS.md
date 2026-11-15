@@ -29,6 +29,10 @@ The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` 
 - `None` means *unset on the wire*; explicit zero values keep their presence bit. `protodantic.NULL` (identity-checked singleton) means explicit JSON null in `Value` fields.
 - proto3 enums are open: unknown wire values become `OpenEnum` pseudo-members, never errors, and re-serialize byte-identically.
 - Unknown fields are dropped when a model re-serializes (the model is the source of truth). Naive datetimes are interpreted as UTC.
+- Pydantic JSON is not proto JSON (python field names, plain JSON numbers), but `bytes` are base64 in both directions (`ser_json_bytes`/`val_json_bytes`, hence pydantic ≥ 2.9): a JSON dump never fails on binary data.
+- A proto `float` narrows to 32 bits on the wire exactly as the protobuf runtime does: float32 precision, and a finite value beyond its range becomes `inf`. Deliberately unchecked — a check costs a python call per value on a type used for large arrays.
+- `Timestamp`/`Duration` carry microsecond precision; finer nanosecond digits are truncated on read.
+- `Any` and `Struct` contents are checked at serialization, not construction (a non-model or non-JSON value raises at `to_proto`). Deliberate: checking at construction would re-walk already-valid data on every decode.
 - Generated modules are deterministic (byte-identical output for the same input — they're meant to be committed and diffed), version-stamped, and depend only on `protodantic` + pydantic + protobuf at runtime (never `grpc_tools`). All imports in generated code are underscore-aliased (`import protodantic as _pd`, `import typing as _typing`, ...) so user message names (`message Any`, `message list`) cannot shadow them.
 - Nested-message resolution is scoped per descriptor pool (per generated module), so duplicate generated modules coexist in one process. `model_for()` is global, last-import-wins. Plain subclasses of generated models do **not** register; re-declaring `__proto_full_name__` in the subclass body is the explicit opt-in.
 - `_pb2` interop is a public contract: `from_proto()` accepts classic protoc-generated instances; `to_proto_bytes()` output parses into `_pb2` classes.
@@ -58,6 +62,6 @@ The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` 
 
 ## Roadmap context (shapes what "don't block the future" means)
 
-- **0.2.0 (current)** — performance: cached per-class conversion plans, in-place encode, single-pass decode. `benchmarks/run.py` is the measure, and **benchmarks before perf claims** holds for any further speedup. The conversion internals are deliberately unconstrained by public API; keep it that way.
+- **0.2.1 (current)** — `bytes` are base64 in pydantic JSON. 0.2.0 was performance: cached per-class conversion plans, in-place encode, single-pass decode. `benchmarks/run.py` is the measure, and **benchmarks before perf claims** holds for any further speedup. The conversion internals are deliberately unconstrained by public API; keep it that way.
 - **Next — adoption**: a drift check for CI (committed generated code against its schema source), and a more meaningful answer to proto2 files in mixed packages than skipping them. The design of both is undecided — raise it before implementing.
 - gRPC service stubs are permanently out of scope: protodantic is a message layer.
