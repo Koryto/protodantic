@@ -6,6 +6,7 @@ python data, Any (deferred).
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from google.protobuf import json_format
 
 from protodantic import NULL
 
@@ -157,3 +158,31 @@ def test_any_with_unregistered_type_is_clear_error(generate):
     raw.payload.value = b"\x0a\x03abc"
     with pytest.raises(LookupError, match="unknown.Type"):
         mod.Envelope.from_proto(raw)
+
+
+def test_sub_microsecond_precision_is_truncated(mod):
+    """POLICY: Timestamp and Duration carry microsecond precision (python
+    datetime/timedelta); finer nanosecond digits on the wire are truncated
+    when read into a model."""
+    message_class = mod.Temporal.proto_class()
+    raw = message_class()
+    raw.at.seconds = 1_700_000_000
+    raw.at.nanos = 123_456_789
+    raw.span.nanos = 999
+    reencoded = message_class.FromString(mod.Temporal.from_proto(raw).to_proto_bytes())
+    assert (reencoded.at.seconds, reencoded.at.nanos) == (1_700_000_000, 123_456_000)
+    assert reencoded.HasField("span")
+    assert (reencoded.span.seconds, reencoded.span.nanos) == (0, 0)
+
+
+def test_any_and_struct_are_checked_at_serialization(generate):
+    """POLICY: the contents of Any and Struct fields are not validated at
+    construction; a non-model in an Any field or non-JSON data in a Struct is
+    rejected when the model is serialized."""
+    envelope = generate("anypayload.proto").Envelope(payload={"not": "a model"})
+    with pytest.raises(TypeError, match="ProtoModel"):
+        envelope.to_proto()
+
+    blob = generate("structs.proto").Blob(meta={"tags": {1, 2}})
+    with pytest.raises(json_format.ParseError):
+        blob.to_proto()

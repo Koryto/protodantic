@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-15
+
+### Changed
+
+- **Breaking:** `bytes` fields are base64 in pydantic JSON, both ways (`model_dump_json()`, `model_dump(mode="json")`, `model_validate_json()`). Before, a JSON dump failed on bytes that were not valid UTF-8, and base64 bytes taken from proto JSON were stored as their text. Bytes that happened to be valid UTF-8 used to appear as text and are now base64. Requires pydantic ≥ 2.9 (was 2.7).
+
+### Documented
+
+- Three behaviours are now stated policies, pinned by tests: a proto `float` narrows to 32 bits on the wire as in any protobuf runtime (float32 precision; finite values beyond its range become `inf`); `Timestamp` and `Duration` carry microsecond precision, with finer nanosecond digits truncated on read; `Any` and `Struct` contents are checked at serialization, not at construction.
+
 ## [0.2.0] - 2026-11-15
 
 ### Changed

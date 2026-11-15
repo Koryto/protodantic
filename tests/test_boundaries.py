@@ -4,6 +4,8 @@ raw protobuf, decoded into a model and re-encoded, must come back as the same
 wire data. One row per (field, value); a failure names both.
 """
 
+import struct
+
 import pytest
 from pydantic import ValidationError
 
@@ -44,6 +46,8 @@ _CASES = [
     for field, values in _EDGES.items()
     for value in values
 ]
+
+_BYTES_IDS = [f"{value!r:.40}" for value in _EDGES["f_bytes"]]
 
 _REJECTED = [
     pytest.param(field, value, id=f"{field}={value}")
@@ -94,3 +98,34 @@ def test_one_past_the_integer_range_is_rejected(mod, field, value):
     range at construction, on both ends."""
     with pytest.raises(ValidationError):
         mod.ScalarSink(**{field: value})
+
+
+@pytest.mark.parametrize("value", _EDGES["f_bytes"], ids=_BYTES_IDS)
+def test_bytes_survive_pydantic_json(mod, value):
+    """USE CASE: any bytes value, not only valid UTF-8, survives a pydantic
+    JSON dump and reload — bytes are base64 in JSON."""
+    sink = mod.ScalarSink(f_bytes=value, r_bytes=[value])
+    assert mod.ScalarSink.model_validate_json(sink.model_dump_json()) == sink
+
+
+@pytest.mark.parametrize("value", _EDGES["f_bytes"], ids=_BYTES_IDS)
+def test_proto_json_bytes_load_through_pydantic(mod, value):
+    """USE CASE: bytes written by proto JSON (base64) are read back as those
+    bytes by model_validate_json, never stored as the base64 text."""
+    sink = mod.ScalarSink(f_bytes=value)
+    proto_json = sink.to_proto_json(preserving_proto_field_name=True)
+    assert mod.ScalarSink.model_validate_json(proto_json) == sink
+
+
+def test_float_fields_narrow_to_32_bits(mod):
+    """POLICY: a proto `float` narrows to 32 bits on the wire exactly as the
+    protobuf runtime does — precision is float32, and a finite value beyond
+    the float32 range becomes infinity. `double` fields are unaffected."""
+    sink = mod.ScalarSink(f_float=0.1, f_double=0.1)
+    restored = mod.ScalarSink.from_proto_bytes(sink.to_proto_bytes())
+    assert restored.f_float == struct.unpack("f", struct.pack("f", 0.1))[0]
+    assert restored.f_float != 0.1
+    assert restored.f_double == 0.1
+
+    overflowed = mod.ScalarSink.from_proto_bytes(mod.ScalarSink(f_float=1e40).to_proto_bytes())
+    assert overflowed.f_float == float("inf")

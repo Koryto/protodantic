@@ -357,6 +357,9 @@ class ProtoModel(BaseModel):
         protected_namespaces=(),
         validate_assignment=True,
         extra="forbid",
+        # bytes are arbitrary binary, so JSON carries them as base64 both ways
+        ser_json_bytes="base64",
+        val_json_bytes="base64",
     )
 
     __proto_full_name__: ClassVar[str] = ""

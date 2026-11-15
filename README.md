@@ -8,7 +8,7 @@
 
 Bidirectional bridge between **Protocol Buffers** and **Pydantic**.
 
-Point it at your `.proto` files and it generates plain pydantic v2 models — with full validation — where every model round-trips losslessly to and from real protobuf messages, wire bytes, and proto JSON. The pydantic → proto direction is a first-class citizen: `to_proto_bytes()` produces genuine wire-format output that any protobuf consumer in any language can parse.
+Point it at your `.proto` files and it generates plain pydantic v2 models — with full validation — where every model round-trips to and from real protobuf messages, wire bytes, and proto JSON. The pydantic → proto direction is a first-class citizen: `to_proto_bytes()` produces genuine wire-format output that any protobuf consumer in any language can parse.
 
 ## Install
 
@@ -102,15 +102,15 @@ source_from_package = generate_source(fdset_from_package("my_org_protos"))
 | proto | pydantic |
 | --- | --- |
 | `int32/64`, `uint32/64`, `sint`, `fixed` | range-validated `int` (out-of-range fails at construction) |
-| `float`, `double` | `float` |
+| `float`, `double` | `float` (a proto `float` narrows to 32 bits on the wire, as in any protobuf runtime) |
 | `string` / `bytes` / `bool` | `str` / `bytes` / `bool` |
 | `enum` | generated `OpenEnum` (`IntEnum` that preserves unknown wire values — proto3 enums are open) |
 | `message` | generated `ProtoModel` (nested types flattened as `Outer_Inner`) |
 | `repeated T` / `map<K, V>` | `list[T]` / `dict[K, V]` |
 | `optional`, oneof members, singular messages | `T \| None` (presence-aware: `None` ⇄ unset) |
 | oneof groups | mutual exclusion enforced by a model validator |
-| `google.protobuf.Timestamp` | `datetime.datetime` (UTC; naive input treated as UTC) |
-| `google.protobuf.Duration` | `datetime.timedelta` |
+| `google.protobuf.Timestamp` | `datetime.datetime` (UTC; naive input treated as UTC; microsecond precision) |
+| `google.protobuf.Duration` | `datetime.timedelta` (microsecond precision) |
 | `google.protobuf.*Value` wrappers | `T \| None` |
 | `google.protobuf.Struct` / `Value` / `ListValue` | `dict[str, Any]` / `Any` / `list[Any]` |
 | `google.protobuf.Any` | `typing.Any` — accepts any `ProtoModel`; packed/unpacked via the model registry |
@@ -122,6 +122,9 @@ Semantics worth knowing:
 - **Validation on mutation is on by default** (`validate_assignment=True`): assigning a second oneof member or an out-of-range int raises immediately. Opt out per-model with standard pydantic config on a subclass.
 - **`protodantic.NULL`** expresses an explicit JSON null in a `google.protobuf.Value` field (`None` means *unset*). In `model_dump_json()` it serializes as real `null`; python-mode dumps keep the sentinel.
 - **Subclassing a generated model does not affect parsing**: `from_proto`/`model_for` keep resolving to the generated class. To make your subclass the resolution target (e.g. to add custom validators applied on parse), re-declare `__proto_full_name__` in its body — explicit opt-in.
+- **Pydantic JSON is not proto JSON**: `model_dump_json()` keeps python field names and plain JSON numbers, while `to_proto_json()` is the canonical proto encoding. `bytes` are base64 in both, so binary data never breaks a JSON dump.
+- **Precision follows the python types**: a proto `float` is float32 on the wire, so `0.1` comes back as the nearest float32 and a finite value beyond the float32 range becomes `inf`. `Timestamp` and `Duration` carry microseconds; finer nanosecond digits are truncated when a message is read into a model.
+- **`Any` and `Struct` contents are checked at serialization**, not at construction: a non-model in an `Any` field or non-JSON data in a `Struct` raises from `to_proto()`.
 
 ## Interop with existing `_pb2` code
 
@@ -149,7 +152,7 @@ If several imported generated modules define the same proto type, the registry b
 
 Requires Python ≥ 3.11. proto3 only by design — proto2 input is rejected with a clear error, but mixed proto2/proto3 packages (common in enterprise repos) can opt into `--proto2 skip` to generate the proto3 subset: skipped files are named in an audit comment, and any proto3 field depending on a proto2 type fails loudly instead of generating a hole. The full supported-behavior spec lives in [tests/](tests/) — every test documents one use case. Documented policies: unknown fields are dropped when a model re-serializes (the model is the source of truth), and naive datetimes are interpreted as UTC.
 
-- **0.2.0 (current)** — faster conversion with no API or generated-code change: cached per-class conversion plans, in-place encoding, and a single validation pass per decode. `from_proto()` now follows wire-compat semantics for message objects from other schema revisions. Numbers come from [benchmarks/run.py](benchmarks/run.py), which you can run yourself.
+- **0.2.1 (current)** — `bytes` are base64 in pydantic JSON (needs pydantic ≥ 2.9). 0.2.0 brought faster conversion with no API or generated-code change: cached per-class conversion plans, in-place encoding, and a single validation pass per decode. `from_proto()` now follows wire-compat semantics for message objects from other schema revisions. Numbers come from [benchmarks/run.py](benchmarks/run.py), which you can run yourself.
 - **Next** — a drift check for CI (committed generated code against its schema source), and a more meaningful answer to proto2 files in mixed packages than skipping them.
 
 gRPC service stubs are out of scope: protodantic is a message layer.

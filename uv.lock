@@ -483,7 +483,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.2" },
     { name = "grpcio-tools", specifier = ">=1.66" },
     { name = "protobuf", specifier = ">=6.30" },
-    { name = "pydantic", specifier = ">=2.7" },
+    { name = "pydantic", specifier = ">=2.9" },
 ]
 
 [package.metadata.requires-dev]
