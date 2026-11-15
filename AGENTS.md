@@ -22,7 +22,7 @@ The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` 
 1. **The test suite is the specification.** Every supported behavior exists as a use-case test with a "USE CASE" style docstring. Workflow is red/green: write the failing spec test first, run it to confirm it fails *for the intended reason*, then implement, then confirm green. A red test in the suite is an accepted roadmap item, not a broken build.
 2. **Fail loudly; no magic.** proto2 input → `NotImplementedError` by default; `--proto2 skip` is the conscious opt-in for mixed-syntax packages — it generates only the proto3 subset, keeps skipped files in the pool for import resolution, names them in an audit comment, and fails loudly on any proto3→proto2 type reference. Name collisions (flattened types, escaped enum members, module paths) → `ValueError` naming the culprits and telling the user what to rename. Wrong message type in `from_proto` → `TypeError`. Unknown `Any` type URL → `LookupError`. Unknown field names at construction → rejected (`extra="forbid"`). Never emit silently-wrong data or auto-disambiguate with positional suffixes. Exactly two automatic renames are allowed, both pure functions of the name alone (never dependent on what else exists in the schema): (a) the trailing-underscore escape for python keywords/reserved names (`class` → `class_`), applied to fields, type names, and enum members; (b) module-path normalization for tree output — per segment, characters outside `[A-Za-z0-9_]` become `_` (1:1, no collapsing), a leading digit gains a `_` prefix, and keywords/reserved stems (`__init__`, `_descriptors`) get the trailing underscore. Post-rename collisions always fail loudly.
 3. **Validation is the product.** Models validate at construction *and* on assignment, and assignment is atomic: a rejected mutation must leave the model exactly as it was. If you add a validator, prove atomicity in a test.
-4. **Scope decisions belong to the maintainer.** If "should we support X?" has no clear answer in the tests or this file, raise it as a question before implementing. Precedents: proto2 model generation was consciously dropped, while mixed packages may explicitly skip proto2 files; `Any` consciously maps to `typing.Any` with registry pack/unpack.
+4. **Scope decisions belong to the maintainer.** If "should we support X?" has no clear answer in the tests or this file, raise it as a question before implementing. Precedents: proto2 model generation was consciously dropped, while mixed packages may explicitly skip proto2 files; `Any` consciously maps to `typing.Any` with registry pack/unpack; gRPC service stubs are permanently out of scope (protodantic is a message layer).
 
 ## Semantics ledger (do not regress; each line is pinned by tests)
 
@@ -45,7 +45,7 @@ The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` 
 
 ## Code conventions
 
-- **Keyword-only parameters for all internal functions** (`def _fill_map(*, target, fd, value)`). Positional args are reserved for framework-fixed signatures (pydantic serializer callbacks) and stdlib-stable idioms — if a signature could ever grow a flag, it takes kwargs.
+- **Keyword-only parameters for all internal functions** (`def _fill_wkt(*, target, value)`). Positional args are reserved for framework-fixed signatures (pydantic serializer callbacks) and stdlib-stable idioms — if a signature could ever grow a flag, it takes kwargs.
 - **No nested function definitions.** State + recursion live in classes (see `_ModuleGenerator`); pure helpers go to module level.
 - **Relative imports** inside the package. Generated code imports only the top-level `protodantic`.
 - **No trivial docstrings or comments.** Comment only the non-obvious "why" (e.g. why registration checks `cls.__dict__`). Public functions get short contract docstrings.
@@ -58,10 +58,5 @@ The **fdset-bytes boundary is load-bearing**: codegen takes `FileDescriptorSet` 
 - Python floor is 3.11. When touching `runtime.py`/`codegen.py`, run both: `uv run pytest tests/` and `uv run --python 3.11 --isolated pytest tests/`. CI runs ubuntu+windows × 3.11/3.12/3.13/3.14; all eight must be green.
 - Releases happen on merge to `master`: the workflow publishes to PyPI iff `_version.py` holds a version not yet published. A releasing PR bumps `_version.py` **and** moves `CHANGELOG.md` `[Unreleased]` entries under the new version heading, atomically.
 - Update `CHANGELOG.md` `[Unreleased]` for any user-facing change (Keep a Changelog format).
+- **Benchmarks before perf claims**: `uv run python benchmarks/run.py` is the measure for any speedup. The conversion internals are deliberately unconstrained by public API; keep it that way.
 - Never commit generated artifacts, secrets, or machine-local paths. Test protos live in `tests/protos/`; temporary schemas belong in `tmp_path`.
-
-## Roadmap context (shapes what "don't block the future" means)
-
-- **0.2.1 (current)** — `bytes` are base64 in pydantic JSON. 0.2.0 was performance: cached per-class conversion plans, in-place encode, single-pass decode. `benchmarks/run.py` is the measure, and **benchmarks before perf claims** holds for any further speedup. The conversion internals are deliberately unconstrained by public API; keep it that way.
-- **Next — adoption**: a drift check for CI (committed generated code against its schema source), and a more meaningful answer to proto2 files in mixed packages than skipping them. The design of both is undecided — raise it before implementing.
-- gRPC service stubs are permanently out of scope: protodantic is a message layer.

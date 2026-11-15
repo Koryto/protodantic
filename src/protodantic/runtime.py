@@ -193,7 +193,7 @@ def _unpack_any(*, msg: Any, pool: Any) -> ProtoModel:
     model_cls = _resolve_model(full_name=type_name, pool=pool)
     if model_cls is None:
         raise LookupError(f"cannot unpack Any: no generated model imported for {type_name!r}")
-    inner = model_cls.proto_class()()
+    inner = model_cls._new_message()
     if not msg.Unpack(inner):
         raise ValueError(f"failed to unpack Any containing {type_name!r}")
     return model_cls.from_proto(inner)
@@ -410,6 +410,11 @@ class ProtoModel(BaseModel):
         """The dynamic protobuf message class this model is bound to."""
         return _plan_for(model=cls).message_class
 
+    @classmethod
+    def _new_message(cls) -> Message:
+        message_class = cls.proto_class()
+        return message_class()
+
     def to_proto(self, *, into: type[Message] | None = None) -> Message:
         """Convert this model to a protobuf message. ``into`` accepts a message
         class of the same proto full name (e.g. a classic _pb2 class) and
@@ -471,4 +476,4 @@ class ProtoModel(BaseModel):
     def from_proto_json(cls, data: str, **kwargs: Any) -> Self:
         """Parse canonical proto JSON into a model instance. kwargs pass
         through to json_format.Parse (e.g. ignore_unknown_fields=True)."""
-        return cls.from_proto(json_format.Parse(data, cls.proto_class()(), **kwargs))
+        return cls.from_proto(json_format.Parse(data, cls._new_message(), **kwargs))
