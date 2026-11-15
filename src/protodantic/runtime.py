@@ -102,13 +102,22 @@ class OpenEnum(enum.IntEnum):
         if not isinstance(value, int) or isinstance(value, bool):
             return None
         pseudo = int.__new__(cls, value)
-        pseudo._name_ = None
+        # nameless by design; the enum machinery types _name_ as str
+        pseudo._name_ = None  # type: ignore[assignment]
         pseudo._value_ = value
         return pseudo
 
 
+def _message_type(*, fd: FieldDescriptor) -> Descriptor:
+    message_type = fd.message_type
+    assert message_type is not None, f"{fd.full_name} is not a message field"
+    return message_type
+
+
 def _is_map(*, fd: FieldDescriptor) -> bool:
-    return fd.type == FieldDescriptor.TYPE_MESSAGE and fd.message_type.GetOptions().map_entry
+    if fd.type != FieldDescriptor.TYPE_MESSAGE:
+        return False
+    return _message_type(fd=fd).GetOptions().map_entry
 
 
 def _scalar_to_proto(*, value: Any) -> Any:
@@ -123,7 +132,7 @@ def _resolve_model(*, full_name: str, pool: Any) -> type[ProtoModel] | None:
     return _MODELS_BY_NAME.get(full_name)
 
 
-def _fill_message(*, target: Message, value: Any) -> None:
+def _fill_message(*, target: Any, value: Any) -> None:
     full_name = target.DESCRIPTOR.full_name
     if full_name == _TIMESTAMP:
         target.FromDatetime(value)
@@ -143,7 +152,7 @@ def _fill_message(*, target: Message, value: Any) -> None:
         target.CopyFrom(value.to_proto())
 
 
-def _message_to_python(*, msg: Message, pool: Any) -> Any:
+def _message_to_python(*, msg: Any, pool: Any) -> Any:
     full_name = msg.DESCRIPTOR.full_name
     if full_name == _TIMESTAMP:
         return msg.ToDatetime(tzinfo=datetime.timezone.utc)
@@ -168,7 +177,7 @@ def _message_to_python(*, msg: Message, pool: Any) -> Any:
     return model_cls.from_proto(msg)
 
 
-def _unpack_any(*, msg: Message, pool: Any) -> ProtoModel:
+def _unpack_any(*, msg: Any, pool: Any) -> ProtoModel:
     type_name = msg.type_url.rpartition("/")[2]
     model_cls = _resolve_model(full_name=type_name, pool=pool)
     if model_cls is None:
@@ -193,7 +202,7 @@ def _set_proto_field(*, msg: Message, fd: FieldDescriptor, value: Any) -> None:
 
 
 def _fill_map(*, target: Any, fd: FieldDescriptor, value: dict) -> None:
-    value_fd = fd.message_type.fields_by_name["value"]
+    value_fd = _message_type(fd=fd).fields_by_name["value"]
     if value_fd.type == FieldDescriptor.TYPE_MESSAGE:
         for key, item in value.items():
             _fill_message(target=target[key], value=item)
@@ -226,7 +235,7 @@ def _read_proto_field(*, msg: Message, fd: FieldDescriptor, pool: Any) -> Any:
 
 
 def _read_map(*, target: Any, fd: FieldDescriptor, pool: Any) -> dict:
-    value_fd = fd.message_type.fields_by_name["value"]
+    value_fd = _message_type(fd=fd).fields_by_name["value"]
     if value_fd.type == FieldDescriptor.TYPE_MESSAGE:
         return {key: _message_to_python(msg=item, pool=pool) for key, item in target.items()}
     return dict(target)
@@ -323,7 +332,7 @@ class ProtoModel(BaseModel):
         for fd in msg.DESCRIPTOR.fields:
             value = getattr(self, python_field_name(proto_name=fd.name))
             if value is not None:
-                _set_proto_field(msg=msg, fd=fd, value=value)
+                _set_proto_field(msg=msg, fd=fd, value=value)  # type: ignore[arg-type]
         return msg
 
     def to_proto_bytes(self) -> bytes:
@@ -346,7 +355,9 @@ class ProtoModel(BaseModel):
             )
         data = {
             python_field_name(proto_name=fd.name): _read_proto_field(
-                msg=msg, fd=fd, pool=cls.__proto_pool__
+                msg=msg,
+                fd=fd,  # type: ignore[arg-type]
+                pool=cls.__proto_pool__,
             )
             for fd in msg.DESCRIPTOR.fields
         }

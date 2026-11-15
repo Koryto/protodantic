@@ -5,7 +5,7 @@ import keyword
 import string
 import textwrap
 from collections import Counter
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 from google.protobuf import (
     any_pb2,
@@ -24,7 +24,7 @@ from google.protobuf.descriptor import (
 )
 
 from ._version import __version__
-from .runtime import load_pool, python_field_name
+from .runtime import _message_type, load_pool, python_field_name
 
 # proto scalar type -> (python annotation, default expression); protodantic
 # names go through the _pd module alias so user message names can never
@@ -159,7 +159,15 @@ def _is_synthetic_oneof(*, oneof: OneofDescriptor) -> bool:
 
 
 def _is_map_field(*, fd: FieldDescriptor) -> bool:
-    return fd.type == FieldDescriptor.TYPE_MESSAGE and fd.message_type.GetOptions().map_entry
+    if fd.type != FieldDescriptor.TYPE_MESSAGE:
+        return False
+    return _message_type(fd=fd).GetOptions().map_entry
+
+
+def _enum_type(*, fd: FieldDescriptor) -> EnumDescriptor:
+    enum_type = fd.enum_type
+    assert enum_type is not None, f"{fd.full_name} is not an enum field"
+    return enum_type
 
 
 def _python_type_name(*, name: str) -> str:
@@ -271,7 +279,7 @@ def _reject_proto2_bridges(*, entries: list[_Entry], skipped_files: frozenset[st
     for entry in entries:
         if entry.kind != "message":
             continue
-        for fd in entry.desc.fields:
+        for fd in cast(Descriptor, entry.desc).fields:
             for type_desc in _field_type_descriptors(fd=fd):
                 if type_desc.file.name in skipped_files:
                     bridges.append(
@@ -364,15 +372,17 @@ def _field_type_descriptors(*, fd: FieldDescriptor) -> list[Descriptor | EnumDes
     runtime-handled well-known types excluded)."""
     if _is_map_field(fd=fd):
         refs: list[Descriptor | EnumDescriptor] = []
-        for sub in (fd.message_type.fields_by_name["key"], fd.message_type.fields_by_name["value"]):
+        entry_fields = _message_type(fd=fd).fields_by_name
+        for sub in (entry_fields["key"], entry_fields["value"]):
             refs.extend(_field_type_descriptors(fd=sub))
         return refs
     if fd.type == FieldDescriptor.TYPE_MESSAGE:
-        if fd.message_type.full_name in _WKT_PY:
+        message_type = _message_type(fd=fd)
+        if message_type.full_name in _WKT_PY:
             return []
-        return [fd.message_type]
+        return [message_type]
     if fd.type == FieldDescriptor.TYPE_ENUM:
-        return [fd.enum_type]
+        return [_enum_type(fd=fd)]
     return []
 
 
@@ -385,18 +395,18 @@ class _BaseRenderer:
 
     def _base_type(self, *, fd: FieldDescriptor) -> str:
         if fd.type == FieldDescriptor.TYPE_MESSAGE:
-            full_name = fd.message_type.full_name
+            full_name = _message_type(fd=fd).full_name
             if full_name in _WKT_PY:
                 return _WKT_PY[full_name]
             return self._py_names[full_name]
         if fd.type == FieldDescriptor.TYPE_ENUM:
-            return self._py_names[fd.enum_type.full_name]
+            return self._py_names[_enum_type(fd=fd).full_name]
         return _SCALARS[fd.type][0]
 
     def _annotation(self, *, fd: FieldDescriptor) -> str:
         if _is_map_field(fd=fd):
-            key_fd = fd.message_type.fields_by_name["key"]
-            value_fd = fd.message_type.fields_by_name["value"]
+            entry_fields = _message_type(fd=fd).fields_by_name
+            key_fd, value_fd = entry_fields["key"], entry_fields["value"]
             return f"dict[{self._base_type(fd=key_fd)}, {self._base_type(fd=value_fd)}]"
         if fd.is_repeated:
             return f"list[{self._base_type(fd=fd)}]"
@@ -421,7 +431,7 @@ class _BaseRenderer:
         if fd.has_presence:
             plain = "None"
         elif fd.type == FieldDescriptor.TYPE_ENUM:
-            plain = f"{self._py_names[fd.enum_type.full_name]}(0)"
+            plain = f"{self._py_names[_enum_type(fd=fd).full_name]}(0)"
         else:
             plain = _SCALARS[fd.type][1]
         return f"_Field(default={plain}, alias={alias})" if alias else plain
@@ -495,9 +505,15 @@ class _BaseRenderer:
 
     def _render_body(self) -> list[str]:
         parts: list[str] = []
-        parts.extend(self._render_enum(desc=e.desc) for e in self._entries if e.kind == "enum")
         parts.extend(
-            self._render_message(desc=e.desc) for e in self._entries if e.kind == "message"
+            self._render_enum(desc=cast(EnumDescriptor, e.desc))
+            for e in self._entries
+            if e.kind == "enum"
+        )
+        parts.extend(
+            self._render_message(desc=cast(Descriptor, e.desc))
+            for e in self._entries
+            if e.kind == "message"
         )
         rebuild = self._render_rebuild()
         if rebuild:
@@ -677,7 +693,7 @@ def _referenced_files(*, entries: list[_Entry], current_file: str) -> list[str]:
     for entry in entries:
         if entry.kind != "message":
             continue
-        for fd in entry.desc.fields:
+        for fd in cast(Descriptor, entry.desc).fields:
             for type_desc in _field_type_descriptors(fd=fd):
                 declaring = type_desc.file.name
                 if declaring != current_file and not _is_runtime_handled_file(file_name=declaring):
