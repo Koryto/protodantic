@@ -106,3 +106,12 @@ def test_assignment_validation_is_configurable(mod):
     carrier = Relaxed(text="hi")
     carrier.number = 42  # no validation on assignment for this subclass
     assert carrier.number == 42
+
+
+def test_fieldless_submessage_presence(mod):
+    """A set submessage with nothing to serialize inside still carries its
+    presence bit — set-but-empty never collapses into unset."""
+    msg = mod.Carrier(marker=mod.Marker()).to_proto()
+    assert msg.HasField("marker")
+    restored = mod.Carrier.from_proto_bytes(msg.SerializeToString())
+    assert restored.marker == mod.Marker()
